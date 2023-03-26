@@ -1,0 +1,27 @@
+[package]
+name = "rytest"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+ash = "0.37.2"
+ash-window = "0.12.0"
+gpu-allocator = "0.22.0"
+bevy = { version = "0.10.0", default-features = false, features = [
+  "bevy_asset",
+  "debug_asset_server",
+  "x11",
+  "bevy_winit",
+] }
+shaderc = "0.8.2"
+shaderc-sys = "0.8.2"
+
+# Enable a small amount of optimization in debug mode
+[profile.dev]
+opt-level = 1
+
+# Enable high optimizations for dependencies (incl. Bevy), but not for our code:
+[profile.dev.package."*"]
+opt-level = 3
