@@ -1,11 +1,43 @@
-use crate::swapchain;
+use crate::raytracing_pipeline::{RaytracingPlugin, VkRaytracingPipeline};
 use crate::{render_device::RenderDevice, swapchain::Swapchain};
+use crate::{swapchain, vk_utils};
 use ash::vk;
+use bevy::ecs::schedule::ScheduleLabel;
 use bevy::{
     ecs::system::SystemState,
     prelude::*,
     window::{PrimaryWindow, RawHandleWrapper},
 };
+
+#[derive(ScheduleLabel, Debug, Hash, PartialEq, Eq, Clone)]
+pub struct RenderSchedule;
+
+#[derive(Debug, Hash, PartialEq, Eq, Clone, SystemSet)]
+pub enum RenderSet {
+    Prepare,
+    Extract,
+    Render,
+}
+
+impl RenderSet {
+    pub fn base_schedule() -> Schedule {
+        use RenderSet::*;
+
+        let mut schedule = Schedule::new();
+        schedule.add_systems((
+            flush_ecs.in_set(Prepare),
+            flush_ecs.in_set(Extract),
+            flush_ecs.in_set(Render),
+        ));
+
+        schedule.configure_sets((Prepare, Extract, Render).chain());
+
+        schedule
+    }
+}
+
+#[allow(unused_variables)]
+fn flush_ecs(world: &mut World) {}
 
 pub struct RenderPlugin;
 
@@ -23,21 +55,24 @@ impl Plugin for RenderPlugin {
         let render_device = RenderDevice::from_window(whandles);
         app.world.insert_resource(render_device);
 
-        app.add_plugin(swapchain::SwapchainPlugin);
+        let mut render_schedule = RenderSet::base_schedule();
+        render_schedule.add_system(wait_for_frame_finish.in_set(RenderSet::Prepare));
+        render_schedule.add_system(render.in_set(RenderSet::Render));
 
-        app.add_system(render);
+        app.add_schedule(RenderSchedule, render_schedule);
+
+        app.add_plugin(swapchain::SwapchainPlugin);
+        app.add_plugin(RaytracingPlugin);
+
+        app.add_system(run_render_schedule);
     }
 }
 
-fn render(world: &mut World) {
-    let mut params: SystemState<(
-        Res<RenderDevice>,
-        ResMut<Swapchain>,
-        Query<&Window, With<PrimaryWindow>>,
-    )> = SystemState::new(world);
-    let (device, mut swapchain, primary_window) = params.get_mut(world);
+fn run_render_schedule(world: &mut World) {
+    world.run_schedule(RenderSchedule);
+}
 
-    // wait for the previous frame to finish
+fn wait_for_frame_finish(device: Res<RenderDevice>, mut swapchain: ResMut<Swapchain>) {
     unsafe {
         device
             .device
@@ -50,7 +85,18 @@ fn render(world: &mut World) {
 
         // get the next image to render to
         swapchain.aquire_next_image(&device);
-        let (image, view) = swapchain.current_framebuffer();
+    }
+}
+
+fn render(
+    device: Res<RenderDevice>,
+    mut swapchain: ResMut<Swapchain>,
+    primary_window: Query<&Window, With<PrimaryWindow>>,
+    pipeline: Query<&VkRaytracingPipeline>,
+) {
+    // wait for the previous frame to finish
+    unsafe {
+        let (swapchain_image, swapchain_view) = swapchain.current_framebuffer();
 
         let cmd_buffer = device.cmd_buffer;
         device
@@ -65,17 +111,68 @@ fn render(world: &mut World) {
             .device
             .begin_command_buffer(cmd_buffer, &begin_info)
             .unwrap();
-        let image_barrier = crate::initializers::layout_transition2(
-            image,
+
+        vk_utils::transition_image_layout(
+            &device,
+            cmd_buffer,
+            swapchain_image,
             vk::ImageLayout::UNDEFINED,
+            vk::ImageLayout::GENERAL,
+        );
+
+        if let Ok(pipeline) = pipeline.get_single() {
+            // update the descriptor set
+            let render_target_image_binding = vk::DescriptorImageInfo::builder()
+                .image_layout(vk::ImageLayout::GENERAL)
+                .image_view(swapchain_view)
+                .build();
+
+            let descriptor_write = vk::WriteDescriptorSet::builder()
+                .dst_set(pipeline.descriptor_set)
+                .dst_binding(0)
+                .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
+                .image_info(std::slice::from_ref(&render_target_image_binding))
+                .build();
+
+            device
+                .device
+                .update_descriptor_sets(std::slice::from_ref(&descriptor_write), &[]);
+
+            device.device.cmd_bind_pipeline(
+                cmd_buffer,
+                vk::PipelineBindPoint::RAY_TRACING_KHR,
+                pipeline.pipeline,
+            );
+
+            device.device.cmd_bind_descriptor_sets(
+                cmd_buffer,
+                vk::PipelineBindPoint::RAY_TRACING_KHR,
+                pipeline.pipeline_layout,
+                0,
+                std::slice::from_ref(&pipeline.descriptor_set),
+                &[],
+            );
+
+            device.exts.rt_pipeline.cmd_trace_rays(
+                cmd_buffer,
+                &pipeline.shader_binding_table.get_sbt_raygen(),
+                &pipeline.shader_binding_table.get_sbt_miss(),
+                &pipeline.shader_binding_table.get_sbt_hit(),
+                &vk::StridedDeviceAddressRegionKHR::default(),
+                swapchain.width,
+                swapchain.height,
+                1,
+            )
+        }
+
+        vk_utils::transition_image_layout(
+            &device,
+            cmd_buffer,
+            swapchain_image,
+            vk::ImageLayout::GENERAL,
             vk::ImageLayout::PRESENT_SRC_KHR,
         );
-        let barrier_info = vk::DependencyInfo::builder()
-            .image_memory_barriers(std::slice::from_ref(&image_barrier));
-        device
-            .exts
-            .sync2
-            .cmd_pipeline_barrier2(cmd_buffer, &barrier_info);
+
         device.device.end_command_buffer(cmd_buffer).unwrap();
 
         // submit the command buffer to the queue

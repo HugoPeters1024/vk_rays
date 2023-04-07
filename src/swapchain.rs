@@ -1,17 +1,19 @@
 use crate::render_device::RenderDevice;
 use ash::vk;
-use bevy::{prelude::*, ecs::system::SystemState, window::PrimaryWindow};
+use bevy::{ecs::system::SystemState, prelude::*, window::PrimaryWindow};
 
 pub struct SwapchainPlugin;
 
 impl Plugin for SwapchainPlugin {
     fn build(&self, app: &mut App) {
-        let mut system_state: SystemState<Query<&Window, With<PrimaryWindow>>> = SystemState::new(&mut app.world);
+        let mut system_state: SystemState<Query<&Window, With<PrimaryWindow>>> =
+            SystemState::new(&mut app.world);
         let query = system_state.get(&app.world);
         let primary_window = query.get_single().unwrap();
 
         let render_device = app.world.get_resource::<RenderDevice>().unwrap();
-        app.world.insert_resource(Swapchain::new(render_device, primary_window));
+        app.world
+            .insert_resource(Swapchain::new(render_device, primary_window));
     }
 }
 
@@ -29,7 +31,7 @@ pub struct Swapchain {
 }
 
 impl Swapchain {
-    pub fn new(device: &RenderDevice, window: &Window,) -> Self {
+    pub fn new(device: &RenderDevice, window: &Window) -> Self {
         unsafe {
             let semaphore_info = vk::SemaphoreCreateInfo::builder();
             let image_ready_sem = device
@@ -70,7 +72,8 @@ impl Swapchain {
 
     pub unsafe fn aquire_next_image(&mut self, device: &RenderDevice) {
         let result = device
-            .exts.swapchain
+            .exts
+            .swapchain
             .acquire_next_image(
                 self.handle,
                 u64::MAX,
@@ -136,7 +139,7 @@ impl Swapchain {
             .image_color_space(surface_format.color_space)
             .image_format(surface_format.format)
             .image_extent(surface_resolution)
-            .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT)
+            .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::STORAGE)
             .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
             .pre_transform(pre_transform)
             .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)

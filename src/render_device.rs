@@ -1,10 +1,10 @@
 use ash::extensions::khr;
-use ash::vk::{ExtDescriptorIndexingFn, KhrMaintenance4Fn, KhrSpirv14Fn};
 use ash::{vk, Device, Entry, Instance};
 use bevy::prelude::*;
 use bevy::window::RawHandleWrapper;
 use gpu_allocator::vulkan::*;
 use std::ffi::{c_char, CStr};
+use std::sync::Mutex;
 
 #[derive(Resource)]
 pub struct RenderDevice {
@@ -17,13 +17,19 @@ pub struct RenderDevice {
     pub queue_family_idx: u32,
     pub queue: vk::Queue,
     pub command_pool: vk::CommandPool,
+    pub descriptor_pool: vk::DescriptorPool,
     pub cmd_buffer: vk::CommandBuffer,
+    pub allocator: Mutex<Allocator>,
+    pub single_time_command_buffer: vk::CommandBuffer,
+    pub single_time_fence: vk::Fence,
 }
 
 pub struct Exts {
     pub surface: khr::Surface,
     pub swapchain: khr::Swapchain,
     pub sync2: khr::Synchronization2,
+    pub rt_pipeline: khr::RayTracingPipeline,
+    pub rt_acc_struct: khr::AccelerationStructure,
 }
 
 impl RenderDevice {
@@ -121,7 +127,14 @@ impl RenderDevice {
             let device_extensions = [
                 khr::Swapchain::name().as_ptr(),
                 khr::Synchronization2::name().as_ptr(),
+                khr::Maintenance4::name().as_ptr(),
+                khr::AccelerationStructure::name().as_ptr(),
+                khr::RayTracingPipeline::name().as_ptr(),
+                khr::DeferredHostOperations::name().as_ptr(),
+                vk::KhrSpirv14Fn::name().as_ptr(),
+                vk::ExtDescriptorIndexingFn::name().as_ptr(),
             ];
+
             println!("Device extensions:");
             for extension_name in device_extensions.iter() {
                 println!("  - {}", CStr::from_ptr(*extension_name).to_str().unwrap());
@@ -136,10 +149,45 @@ impl RenderDevice {
                 .synchronization2(true)
                 .build();
 
+            let mut bda_info = vk::PhysicalDeviceBufferDeviceAddressFeatures::builder()
+                .buffer_device_address(true)
+                .build();
+
+            let mut maintaince4_info = vk::PhysicalDeviceMaintenance4Features::builder()
+                .maintenance4(true)
+                .build();
+
+            let mut dynamic_rendering_info = vk::PhysicalDeviceDynamicRenderingFeatures::builder()
+                .dynamic_rendering(true)
+                .build();
+
+            let mut features_indexing = vk::PhysicalDeviceDescriptorIndexingFeatures::builder()
+                .descriptor_binding_partially_bound(true)
+                .runtime_descriptor_array(true)
+                .descriptor_binding_sampled_image_update_after_bind(true)
+                .descriptor_binding_storage_image_update_after_bind(true)
+                .descriptor_binding_variable_descriptor_count(true);
+
+            let mut features_acceleration_structure =
+                vk::PhysicalDeviceAccelerationStructureFeaturesKHR::builder()
+                    .acceleration_structure(true)
+                    .build();
+
+            let mut features_raytracing_pipeline =
+                vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::builder()
+                    .ray_tracing_pipeline(true)
+                    .build();
+
             let device_info = vk::DeviceCreateInfo::builder()
                 .queue_create_infos(std::slice::from_ref(&queue_info))
                 .enabled_extension_names(&device_extensions)
-                .push_next(&mut sync2_info);
+                .push_next(&mut sync2_info)
+                .push_next(&mut bda_info)
+                .push_next(&mut maintaince4_info)
+                .push_next(&mut dynamic_rendering_info)
+                .push_next(&mut features_indexing)
+                .push_next(&mut features_acceleration_structure)
+                .push_next(&mut features_raytracing_pipeline);
 
             let device = instance
                 .create_device(physical_device, &device_info, None)
@@ -157,12 +205,48 @@ impl RenderDevice {
                 .command_buffer_count(1);
             let cmd_buffer = device.allocate_command_buffers(&alloc_info).unwrap()[0];
 
+            let pool_sizes = [
+                vk::DescriptorPoolSize {
+                    ty: vk::DescriptorType::UNIFORM_BUFFER,
+                    descriptor_count: 1000,
+                },
+                vk::DescriptorPoolSize {
+                    ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+                    descriptor_count: 1000,
+                },
+            ];
+            let descriptor_pool_info = vk::DescriptorPoolCreateInfo::builder()
+                .pool_sizes(&pool_sizes)
+                .max_sets(1000);
+
+            let descriptor_pool = device
+                .create_descriptor_pool(&descriptor_pool_info, None)
+                .unwrap();
+
+            let allocator = Mutex::new(
+                Allocator::new(&AllocatorCreateDesc {
+                    instance: instance.clone(),
+                    device: device.clone(),
+                    physical_device: physical_device.clone(),
+                    debug_settings: Default::default(),
+                    buffer_device_address: true,
+                })
+                .unwrap(),
+            );
+
+            let single_time_command_buffer =
+                device.allocate_command_buffers(&alloc_info).unwrap()[0];
+            let fence_info = vk::FenceCreateInfo::builder();
+            let single_time_fence = device.create_fence(&fence_info, None).unwrap();
+
             RenderDevice {
                 entry,
                 exts: Exts {
                     surface: ext_surface,
                     swapchain: khr::Swapchain::new(&instance, &device),
                     sync2: khr::Synchronization2::new(&instance, &device),
+                    rt_pipeline: khr::RayTracingPipeline::new(&instance, &device),
+                    rt_acc_struct: khr::AccelerationStructure::new(&instance, &device),
                 },
                 instance,
                 surface,
@@ -171,7 +255,11 @@ impl RenderDevice {
                 queue_family_idx,
                 queue,
                 command_pool,
+                descriptor_pool,
                 cmd_buffer,
+                allocator,
+                single_time_command_buffer,
+                single_time_fence,
             }
         }
     }
@@ -185,5 +273,45 @@ impl RenderDevice {
                 .unwrap()
                 .to_string()
         }
+    }
+
+    pub unsafe fn run_single_commands(&self, f: &dyn Fn(vk::CommandBuffer)) {
+        self.device
+            .reset_command_buffer(
+                self.single_time_command_buffer,
+                vk::CommandBufferResetFlags::empty(),
+            )
+            .unwrap();
+        let begin_info = vk::CommandBufferBeginInfo::builder()
+            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+        self.device
+            .begin_command_buffer(self.single_time_command_buffer, &begin_info)
+            .unwrap();
+        f(self.single_time_command_buffer);
+        self.device
+            .end_command_buffer(self.single_time_command_buffer)
+            .unwrap();
+
+        self.device
+            .reset_fences(std::slice::from_ref(&self.single_time_fence))
+            .unwrap();
+        let submit_info = vk::SubmitInfo::builder()
+            .command_buffers(std::slice::from_ref(&self.single_time_command_buffer));
+
+        self.device
+            .queue_submit(
+                self.queue,
+                std::slice::from_ref(&submit_info),
+                self.single_time_fence,
+            )
+            .unwrap();
+
+        self.device
+            .wait_for_fences(
+                std::slice::from_ref(&self.single_time_fence),
+                true,
+                u64::MAX,
+            )
+            .unwrap();
     }
 }

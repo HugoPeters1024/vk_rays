@@ -1,0 +1,10 @@
+#version 460
+#extension GL_EXT_buffer_reference : enable
+#extension GL_EXT_ray_tracing : enable
+#extension GL_EXT_nonuniform_qualifier : enable
+
+layout(set=0, binding=0, rgba32f) uniform image2D                  render_target;
+
+void main() {
+  imageStore(render_target, ivec2(gl_LaunchIDEXT.xy), vec4(1.0,0.0,1.0,1.0));
+}

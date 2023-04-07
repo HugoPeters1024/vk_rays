@@ -1,14 +1,19 @@
+use std::io::Cursor;
+
+use crate::render_device::*;
+use ash::{util::read_spv, vk};
 use bevy::{
-    asset::{Asset, AssetLoader},
-    prelude::*,
+    asset::{AssetLoader, LoadedAsset},
     reflect::TypeUuid,
 };
-use ash::vk;
 use shaderc;
 
 #[derive(Debug, Clone, TypeUuid)]
 #[uuid = "d95bc916-6c55-4de3-9622-37e7b6969fda"]
-pub struct Shader {}
+pub struct Shader {
+    pub path: String,
+    pub spirv: Vec<u8>,
+}
 
 pub struct ShaderLoader {
     compiler: shaderc::Compiler,
@@ -36,27 +41,71 @@ impl AssetLoader for ShaderLoader {
                 "vert" => shaderc::ShaderKind::Vertex,
                 "frag" => shaderc::ShaderKind::Fragment,
                 "comp" => shaderc::ShaderKind::Compute,
+                "rgen" => shaderc::ShaderKind::RayGeneration,
+                "rchit" => shaderc::ShaderKind::ClosestHit,
+                "rmiss" => shaderc::ShaderKind::Miss,
                 _ => panic!("Unsupported shader type: {}", ext),
             };
 
             let mut options = shaderc::CompileOptions::new().unwrap();
             options.set_target_env(shaderc::TargetEnv::Vulkan, vk::make_api_version(0, 1, 3, 0));
+            options.set_target_spirv(shaderc::SpirvVersion::V1_6);
 
-            let binary_result = self.compiler.compile_into_spirv(std::str::from_utf8(bytes).unwrap(), kind, load_context.path().to_str().unwrap(), "main", Some(&options));
+            let binary_result = self.compiler.compile_into_spirv(
+                std::str::from_utf8(bytes).unwrap(),
+                kind,
+                load_context.path().to_str().unwrap(),
+                "main",
+                Some(&options),
+            );
 
-            match binary_result {
-                Ok(binary) => {
-                }
+            let binary = match binary_result {
+                Ok(binary) => binary,
                 Err(e) => {
-                    println!("Shader compilation error: {}", e);
+                    panic!("Shader compilation error: {}", e);
                 }
-            }
+            };
 
+            let shader = Shader {
+                path: load_context.path().to_str().unwrap().to_string(),
+                spirv: Vec::from(binary.as_binary_u8()).into(),
+            };
+
+            load_context.set_default_asset(LoadedAsset::new(shader));
             Ok(())
         })
     }
 
     fn extensions(&self) -> &[&str] {
-        &["comp","vert","frag"]
+        &["comp", "vert", "frag", "rgen", "rchit", "rmiss"]
+    }
+}
+
+pub trait ShaderProvider {
+    fn load_shader(
+        &self,
+        shader: &Shader,
+        stage: vk::ShaderStageFlags,
+    ) -> vk::PipelineShaderStageCreateInfo;
+}
+
+impl ShaderProvider for RenderDevice {
+    fn load_shader(
+        &self,
+        shader: &Shader,
+        stage: vk::ShaderStageFlags,
+    ) -> vk::PipelineShaderStageCreateInfo {
+        let code = read_spv(&mut Cursor::new(&shader.spirv)).unwrap();
+        let shader_module = unsafe {
+            self.device
+                .create_shader_module(&vk::ShaderModuleCreateInfo::builder().code(&code), None)
+                .unwrap()
+        };
+
+        vk::PipelineShaderStageCreateInfo::builder()
+            .stage(stage)
+            .module(shader_module)
+            .name(std::ffi::CStr::from_bytes_with_nul(b"main\0").unwrap())
+            .build()
     }
 }
