@@ -1,4 +1,5 @@
-use crate::raytracing_pipeline::{RaytracingPlugin, VkRaytracingPipeline};
+use crate::raytracing_pipeline::{RaytracingPlugin, VkRaytracingPipeline, RaytracingPipeline};
+use crate::render_image::{Image, ImageProvider};
 use crate::{render_device::RenderDevice, swapchain::Swapchain};
 use crate::{swapchain, vk_utils};
 use ash::vk;
@@ -38,6 +39,11 @@ impl RenderSet {
 
 #[allow(unused_variables)]
 fn flush_ecs(world: &mut World) {}
+
+#[derive(Resource, Default, Deref, DerefMut)]
+pub struct RenderResources {
+    pub rt_pipeline: Handle<RaytracingPipeline>,
+}
 
 pub struct RenderPlugin;
 
@@ -91,8 +97,9 @@ fn wait_for_frame_finish(device: Res<RenderDevice>, mut swapchain: ResMut<Swapch
 fn render(
     device: Res<RenderDevice>,
     mut swapchain: ResMut<Swapchain>,
+    render_resources: Res<RenderResources>,
+    pipelines: Res<Assets<RaytracingPipeline>>,
     primary_window: Query<&Window, With<PrimaryWindow>>,
-    pipeline: Query<&VkRaytracingPipeline>,
 ) {
     // wait for the previous frame to finish
     unsafe {
@@ -120,7 +127,7 @@ fn render(
             vk::ImageLayout::GENERAL,
         );
 
-        if let Ok(pipeline) = pipeline.get_single() {
+        if let Some(compiled) = pipelines.get(&render_resources.rt_pipeline).and_then(|p| p.compiled.as_ref()) {
             // update the descriptor set
             let render_target_image_binding = vk::DescriptorImageInfo::builder()
                 .image_layout(vk::ImageLayout::GENERAL)
@@ -128,7 +135,7 @@ fn render(
                 .build();
 
             let descriptor_write = vk::WriteDescriptorSet::builder()
-                .dst_set(pipeline.descriptor_set)
+                .dst_set(compiled.descriptor_set)
                 .dst_binding(0)
                 .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
                 .image_info(std::slice::from_ref(&render_target_image_binding))
@@ -141,23 +148,23 @@ fn render(
             device.device.cmd_bind_pipeline(
                 cmd_buffer,
                 vk::PipelineBindPoint::RAY_TRACING_KHR,
-                pipeline.pipeline,
+                compiled.vk_pipeline,
             );
 
             device.device.cmd_bind_descriptor_sets(
                 cmd_buffer,
                 vk::PipelineBindPoint::RAY_TRACING_KHR,
-                pipeline.pipeline_layout,
+                compiled.pipeline_layout,
                 0,
-                std::slice::from_ref(&pipeline.descriptor_set),
+                std::slice::from_ref(&compiled.descriptor_set),
                 &[],
             );
 
             device.exts.rt_pipeline.cmd_trace_rays(
                 cmd_buffer,
-                &pipeline.shader_binding_table.get_sbt_raygen(),
-                &pipeline.shader_binding_table.get_sbt_miss(),
-                &pipeline.shader_binding_table.get_sbt_hit(),
+                &compiled.shader_binding_table.get_sbt_raygen(),
+                &compiled.shader_binding_table.get_sbt_miss(),
+                &compiled.shader_binding_table.get_sbt_hit(),
                 &vk::StridedDeviceAddressRegionKHR::default(),
                 swapchain.width,
                 swapchain.height,

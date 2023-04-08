@@ -87,6 +87,16 @@ impl RenderDevice {
             )
             .unwrap();
 
+            let all_devices = instance.enumerate_physical_devices().unwrap();
+            println!("Available devices:");
+            for device in all_devices.iter() {
+                let info = instance.get_physical_device_properties(*device);
+                println!(
+                    "  - {}",
+                    CStr::from_ptr(info.device_name.as_ptr()).to_str().unwrap()
+                );
+            }
+
             let (physical_device, queue_family_idx) = instance
                 .enumerate_physical_devices()
                 .unwrap()
