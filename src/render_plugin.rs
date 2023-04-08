@@ -1,4 +1,5 @@
-use crate::raytracing_pipeline::{RaytracingPlugin, VkRaytracingPipeline, RaytracingPipeline};
+use crate::rasterization_pipeline::{RasterizationPipeline, RasterizationPipelinePlugin};
+use crate::raytracing_pipeline::{RaytracingPipeline, RaytracingPlugin, VkRaytracingPipeline};
 use crate::render_image::{Image, ImageProvider};
 use crate::{render_device::RenderDevice, swapchain::Swapchain};
 use crate::{swapchain, vk_utils};
@@ -40,9 +41,11 @@ impl RenderSet {
 #[allow(unused_variables)]
 fn flush_ecs(world: &mut World) {}
 
-#[derive(Resource, Default, Deref, DerefMut)]
+#[derive(Resource, Default)]
 pub struct RenderResources {
     pub rt_pipeline: Handle<RaytracingPipeline>,
+    pub quad_pipeline: Handle<RasterizationPipeline>,
+    pub render_target: Handle<Image>,
 }
 
 pub struct RenderPlugin;
@@ -51,7 +54,8 @@ impl Plugin for RenderPlugin {
     fn build(&self, app: &mut App) {
         app.add_asset::<crate::shader::Shader>()
             .init_asset_loader::<crate::shader::ShaderLoader>()
-            .init_debug_asset_loader::<crate::shader::ShaderLoader>();
+            .init_debug_asset_loader::<crate::shader::ShaderLoader>()
+            .add_asset::<crate::render_image::Image>();
 
         let mut system_state: SystemState<Query<&RawHandleWrapper, With<PrimaryWindow>>> =
             SystemState::new(&mut app.world);
@@ -62,6 +66,7 @@ impl Plugin for RenderPlugin {
         app.world.insert_resource(render_device);
 
         let mut render_schedule = RenderSet::base_schedule();
+        render_schedule.add_system(prepare_render_target.in_set(RenderSet::Prepare));
         render_schedule.add_system(wait_for_frame_finish.in_set(RenderSet::Prepare));
         render_schedule.add_system(render.in_set(RenderSet::Render));
 
@@ -69,6 +74,7 @@ impl Plugin for RenderPlugin {
 
         app.add_plugin(swapchain::SwapchainPlugin);
         app.add_plugin(RaytracingPlugin);
+        app.add_plugin(RasterizationPipelinePlugin);
 
         app.add_system(run_render_schedule);
     }
@@ -76,6 +82,23 @@ impl Plugin for RenderPlugin {
 
 fn run_render_schedule(world: &mut World) {
     world.run_schedule(RenderSchedule);
+}
+
+fn prepare_render_target(
+    device: Res<RenderDevice>,
+    swapchain: Res<Swapchain>,
+    mut render_resources: ResMut<RenderResources>,
+    mut images: ResMut<Assets<Image>>,
+) {
+    if images.get(&render_resources.render_target).is_none() {
+        render_resources.render_target = images.add(device.create_image(
+            swapchain.width,
+            swapchain.height,
+            vk::Format::R32G32B32A32_SFLOAT,
+            vk::ImageLayout::GENERAL,
+            vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::SAMPLED,
+        ));
+    }
 }
 
 fn wait_for_frame_finish(device: Res<RenderDevice>, mut swapchain: ResMut<Swapchain>) {
@@ -98,7 +121,9 @@ fn render(
     device: Res<RenderDevice>,
     mut swapchain: ResMut<Swapchain>,
     render_resources: Res<RenderResources>,
-    pipelines: Res<Assets<RaytracingPipeline>>,
+    rt_pipelines: Res<Assets<RaytracingPipeline>>,
+    rast_pipelines: Res<Assets<RasterizationPipeline>>,
+    images: Res<Assets<Image>>,
     primary_window: Query<&Window, With<PrimaryWindow>>,
 ) {
     // wait for the previous frame to finish
@@ -119,19 +144,18 @@ fn render(
             .begin_command_buffer(cmd_buffer, &begin_info)
             .unwrap();
 
-        vk_utils::transition_image_layout(
-            &device,
-            cmd_buffer,
-            swapchain_image,
-            vk::ImageLayout::UNDEFINED,
-            vk::ImageLayout::GENERAL,
-        );
+        let render_target = images
+            .get(&render_resources.render_target)
+            .expect("render target not found");
 
-        if let Some(compiled) = pipelines.get(&render_resources.rt_pipeline).and_then(|p| p.compiled.as_ref()) {
+        if let Some(compiled) = rt_pipelines
+            .get(&render_resources.rt_pipeline)
+            .and_then(|p| p.compiled.as_ref())
+        {
             // update the descriptor set
             let render_target_image_binding = vk::DescriptorImageInfo::builder()
                 .image_layout(vk::ImageLayout::GENERAL)
-                .image_view(swapchain_view)
+                .image_view(render_target.view)
                 .build();
 
             let descriptor_write = vk::WriteDescriptorSet::builder()
@@ -172,11 +196,113 @@ fn render(
             )
         }
 
+        // make render target available for sampling
+        vk_utils::transition_image_layout(
+            &device,
+            cmd_buffer,
+            render_target.handle,
+            vk::ImageLayout::GENERAL,
+            vk::ImageLayout::GENERAL,
+        );
+
+        // Make swapchain available for rendering
         vk_utils::transition_image_layout(
             &device,
             cmd_buffer,
             swapchain_image,
-            vk::ImageLayout::GENERAL,
+            vk::ImageLayout::UNDEFINED,
+            vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+        );
+
+        if let Some(compiled) = rast_pipelines
+            .get(&render_resources.quad_pipeline)
+            .and_then(|x| x.compiled.as_ref())
+        {
+            // update the descriptor set
+            let render_target_image_binding = vk::DescriptorImageInfo::builder()
+                .image_layout(vk::ImageLayout::GENERAL)
+                .image_view(render_target.view)
+                .sampler(device.nearest_sampler)
+                .build();
+
+            let descriptor_write = vk::WriteDescriptorSet::builder()
+                .dst_set(compiled.descriptor_set)
+                .dst_binding(0)
+                .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                .image_info(std::slice::from_ref(&render_target_image_binding))
+                .build();
+
+            device
+                .device
+                .update_descriptor_sets(std::slice::from_ref(&descriptor_write), &[]);
+
+            let render_area = vk::Rect2D {
+                offset: vk::Offset2D { x: 0, y: 0 },
+                extent: vk::Extent2D {
+                    width: swapchain.width,
+                    height: swapchain.height,
+                },
+            };
+
+            let attachment_info = vk::RenderingAttachmentInfoKHR::builder()
+                .image_view(swapchain_view)
+                .image_layout(vk::ImageLayout::ATTACHMENT_OPTIMAL)
+                .load_op(vk::AttachmentLoadOp::CLEAR)
+                .store_op(vk::AttachmentStoreOp::STORE)
+                .clear_value(vk::ClearValue {
+                    color: vk::ClearColorValue {
+                        float32: [0.0, 0.0, 0.0, 0.0],
+                    },
+                });
+
+            let render_info = vk::RenderingInfo::builder()
+                .layer_count(1)
+                .render_area(render_area)
+                .color_attachments(std::slice::from_ref(&attachment_info));
+
+            device.device.cmd_begin_rendering(cmd_buffer, &render_info);
+
+            device
+                .device
+                .cmd_set_scissor(cmd_buffer, 0, std::slice::from_ref(&render_area));
+            device.device.cmd_set_viewport(
+                cmd_buffer,
+                0,
+                std::slice::from_ref(&vk::Viewport {
+                    x: 0.0,
+                    y: 0.0,
+                    width: swapchain.width as f32,
+                    height: swapchain.height as f32,
+                    min_depth: 0.0,
+                    max_depth: 1.0,
+                }),
+            );
+
+            device.device.cmd_bind_pipeline(
+                cmd_buffer,
+                vk::PipelineBindPoint::GRAPHICS,
+                compiled.vk_pipeline,
+            );
+
+            device.device.cmd_bind_descriptor_sets(
+                cmd_buffer,
+                vk::PipelineBindPoint::GRAPHICS,
+                compiled.pipeline_layout,
+                0,
+                std::slice::from_ref(&compiled.descriptor_set),
+                &[],
+            );
+
+            device.device.cmd_draw(cmd_buffer, 3, 1, 0, 0);
+            device.device.cmd_end_rendering(cmd_buffer);
+        }
+
+        // Make swapchain available for presentation
+        vk_utils::transition_image_layout(
+            &device,
+            cmd_buffer,
+            swapchain_image,
+            vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
             vk::ImageLayout::PRESENT_SRC_KHR,
         );
 

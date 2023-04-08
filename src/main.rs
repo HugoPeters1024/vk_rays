@@ -1,3 +1,4 @@
+mod composed_asset;
 mod initializers;
 mod rasterization_pipeline;
 mod raytracing_pipeline;
@@ -5,7 +6,6 @@ mod render_buffer;
 mod render_device;
 mod render_image;
 mod render_plugin;
-mod composed_asset;
 mod shader;
 mod swapchain;
 mod vk_utils;
@@ -13,6 +13,7 @@ mod vk_utils;
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use clap::Parser;
+use rasterization_pipeline::RasterizationPipeline;
 use render_plugin::RenderResources;
 use shader::Shader;
 
@@ -53,22 +54,30 @@ fn main() {
 fn startup(
     mut commands: Commands,
     assets: Res<AssetServer>,
-    mut pipelines: ResMut<Assets<RaytracingPipeline>>,
+    mut rt_pipelines: ResMut<Assets<RaytracingPipeline>>,
+    mut rast_pipelines: ResMut<Assets<RasterizationPipeline>>,
 ) {
     let raygen_shader: Handle<Shader> = assets.load("shaders/raygen.rgen");
     let hit_shader: Handle<Shader> = assets.load("shaders/hit.rchit");
     let miss_shader: Handle<Shader> = assets.load("shaders/miss.rmiss");
 
-    let pipeline = pipelines.add(RaytracingPipeline {
+    let rt_pipeline = rt_pipelines.add(RaytracingPipeline {
         raygen_shader: raygen_shader.clone(),
         hit_shader: hit_shader.clone(),
         miss_shader: miss_shader.clone(),
         ..default()
     });
 
-    commands.insert_resource(RenderResources {
-        rt_pipeline: pipeline,
+    let vs_shader: Handle<Shader> = assets.load("shaders/quad.vert");
+    let fs_shader: Handle<Shader> = assets.load("shaders/quad.frag");
+
+    let quad_pipeline = rast_pipelines.add(RasterizationPipeline {
+        vs_shader,
+        fs_shader,
+        ..default()
     });
+
+    commands.insert_resource(RenderResources { rt_pipeline, quad_pipeline, ..default() });
 }
 
 fn test(keyboard: Res<Input<KeyCode>>, time: Res<Time>, device: Res<RenderDevice>) {

@@ -1,9 +1,13 @@
 use ash::vk;
+use bevy::reflect::TypeUuid;
 use gpu_allocator::vulkan::*;
 use gpu_allocator::*;
 
 use crate::render_device::RenderDevice;
+use crate::vk_utils;
 
+#[derive(TypeUuid)]
+#[uuid = "f5b5b0f0-1b5f-4b0e-9c1f-1f1b0c0c0c2d"]
 pub struct Image {
     pub width: u32,
     pub height: u32,
@@ -17,7 +21,6 @@ pub struct Image {
 pub trait ImageProvider {
     fn create_image(
         &self,
-        device: &RenderDevice,
         width: u32,
         height: u32,
         format: vk::Format,
@@ -29,7 +32,6 @@ pub trait ImageProvider {
 impl ImageProvider for RenderDevice {
     fn create_image(
         &self,
-        device: &RenderDevice,
         width: u32,
         height: u32,
         format: vk::Format,
@@ -52,9 +54,9 @@ impl ImageProvider for RenderDevice {
             .usage(usage)
             .sharing_mode(vk::SharingMode::EXCLUSIVE)
             .initial_layout(vk::ImageLayout::UNDEFINED);
-        let handle = unsafe { device.device.create_image(&image_info, None).unwrap() };
+        let handle = unsafe { self.device.create_image(&image_info, None).unwrap() };
 
-        let requirements = unsafe { device.device.get_image_memory_requirements(handle) };
+        let requirements = unsafe { self.device.get_image_memory_requirements(handle) };
         let allocation = self
             .allocator
             .lock()
@@ -69,23 +71,18 @@ impl ImageProvider for RenderDevice {
             .unwrap();
 
         unsafe {
-            device
+            self
                 .device
                 .bind_image_memory(handle, allocation.memory(), allocation.offset())
                 .unwrap();
         }
 
         let view_info = crate::initializers::image_view_info(handle.clone(), format);
-        let view = unsafe { device.device.create_image_view(&view_info, None).unwrap() };
+        let view = unsafe { self.device.create_image_view(&view_info, None).unwrap() };
 
         unsafe {
-            device.run_single_commands(&|command_buffer| {
-                let barrier =
-                    crate::initializers::layout_transition2(handle, vk::ImageLayout::UNDEFINED, initial_layout);
-                let dependency_info = vk::DependencyInfo::builder()
-                    .image_memory_barriers(std::slice::from_ref(&barrier))
-                    .build();
-                device.device.cmd_pipeline_barrier2(command_buffer, &dependency_info);
+            self.run_single_commands(&|command_buffer| {
+                vk_utils::transition_image_layout(self, command_buffer, handle, vk::ImageLayout::UNDEFINED, initial_layout);
             });
         }
 

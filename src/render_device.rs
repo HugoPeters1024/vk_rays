@@ -22,6 +22,7 @@ pub struct RenderDevice {
     pub allocator: Mutex<Allocator>,
     pub single_time_command_buffer: vk::CommandBuffer,
     pub single_time_fence: vk::Fence,
+    pub nearest_sampler: vk::Sampler,
 }
 
 pub struct Exts {
@@ -249,6 +250,19 @@ impl RenderDevice {
             let fence_info = vk::FenceCreateInfo::builder();
             let single_time_fence = device.create_fence(&fence_info, None).unwrap();
 
+            let single_time_fence = device.create_fence(&fence_info, None).unwrap();
+            let sampler_info = vk::SamplerCreateInfo::builder()
+                .mag_filter(vk::Filter::NEAREST)
+                .min_filter(vk::Filter::NEAREST)
+                .address_mode_u(vk::SamplerAddressMode::REPEAT)
+                .address_mode_v(vk::SamplerAddressMode::REPEAT)
+                .address_mode_w(vk::SamplerAddressMode::REPEAT)
+                .anisotropy_enable(false)
+                .border_color(vk::BorderColor::INT_OPAQUE_BLACK)
+                .unnormalized_coordinates(false)
+                .mipmap_mode(vk::SamplerMipmapMode::NEAREST);
+            let nearest_sampler = device.create_sampler(&sampler_info, None).unwrap();
+
             RenderDevice {
                 entry,
                 exts: Exts {
@@ -270,6 +284,7 @@ impl RenderDevice {
                 allocator,
                 single_time_command_buffer,
                 single_time_fence,
+                nearest_sampler,
             }
         }
     }
