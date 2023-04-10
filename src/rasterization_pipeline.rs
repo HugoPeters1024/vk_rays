@@ -1,11 +1,12 @@
 use ash::vk;
+use bevy::ecs::system::lifetimeless::SRes;
 use bevy::prelude::*;
 use bevy::reflect::TypeUuid;
 
-use crate::composed_asset::{ComposedAsset, ComposedAssetAppExtension, ComposedAssetEvent};
+use crate::composed_asset::{ComposedAsset, ComposedAssetAppExtension};
 use crate::render_device::RenderDevice;
-use crate::render_plugin::{RenderSchedule, RenderSet};
 use crate::shader::{Shader, ShaderProvider};
+use crate::vulkan_asset_server::{VulkanAsset, AddVulkanAsset};
 
 #[derive(Default, TypeUuid)]
 #[uuid = "f5b5b0f0-1b5f-4b0e-9c1f-1f1b0c0c0c0c"]
@@ -23,6 +24,28 @@ impl ComposedAsset for RasterizationPipeline {
     }
 }
 
+impl VulkanAsset for RasterizationPipeline {
+    type ExtractedAsset = (Shader, Shader);
+    type PreparedAsset = VkRasterizationPipeline;
+    type Param = SRes<Assets<Shader>>;
+
+    fn extract_asset(&self, shaders: &mut bevy::ecs::system::SystemParamItem<Self::Param>) -> Option<Self::ExtractedAsset> {
+        let vs_shader = shaders.get(&self.vs_shader)?;
+        let fs_shader = shaders.get(&self.fs_shader)?;
+        Some((vs_shader.clone(), fs_shader.clone()))
+    }
+
+    fn prepare_asset(device: &RenderDevice, asset: Self::ExtractedAsset) -> Self::PreparedAsset {
+        let (vs_shader, fs_shader) = asset;
+        println!("creating rasterization pipeline");
+        create_rast_pipeline(
+            &device,
+            &vs_shader,
+            &fs_shader,
+        )
+    }
+}
+
 pub struct VkRasterizationPipeline {
     pub vk_pipeline: vk::Pipeline,
     pub pipeline_layout: vk::PipelineLayout,
@@ -35,41 +58,7 @@ pub struct RasterizationPipelinePlugin;
 impl Plugin for RasterizationPipelinePlugin {
     fn build(&self, app: &mut App) {
         app.add_composed_asset::<RasterizationPipeline>();
-        app.edit_schedule(RenderSchedule, |schedule| {
-            schedule.add_system(ensure_rast_pipeline_up_to_date.in_set(RenderSet::Extract));
-        });
-    }
-}
-
-fn ensure_rast_pipeline_up_to_date(
-    device: Res<RenderDevice>,
-    shaders: Res<Assets<Shader>>,
-    mut pipeline_events: EventReader<ComposedAssetEvent<RasterizationPipeline>>,
-    mut pipelines: ResMut<Assets<RasterizationPipeline>>,
-) {
-    for event in pipeline_events.iter() {
-        let handle = match event {
-            ComposedAssetEvent(AssetEvent::Created { handle }) => handle,
-            ComposedAssetEvent(AssetEvent::Modified { handle }) => handle,
-            ComposedAssetEvent(AssetEvent::Removed { handle: _ }) => panic!("TODO"),
-        };
-
-        let mut pipeline = pipelines.get_mut(handle).unwrap();
-        let vs_shader = shaders.get(&pipeline.vs_shader);
-        let fs_shader = shaders.get(&pipeline.fs_shader);
-
-        if vs_shader.is_none() || fs_shader.is_none() {
-            println!("Not all shaders loaded, skipping pipeline reload");
-            continue;
-        }
-
-        println!("creating rasterization pipeline");
-
-        pipeline.compiled = Some(create_rast_pipeline(
-            &device,
-            vs_shader.unwrap(),
-            fs_shader.unwrap(),
-        ));
+        app.add_vulkan_asset::<RasterizationPipeline>();
     }
 }
 

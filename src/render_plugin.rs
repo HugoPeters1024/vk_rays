@@ -1,8 +1,9 @@
 use crate::rasterization_pipeline::{RasterizationPipeline, RasterizationPipelinePlugin};
-use crate::raytracing_pipeline::{RaytracingPipeline, RaytracingPlugin, VkRaytracingPipeline};
+use crate::raytracing_pipeline::{RaytracingPipeline, RaytracingPlugin};
 use crate::render_image::{Image, ImageProvider};
-use crate::{render_device::RenderDevice, swapchain::Swapchain};
+use crate::vulkan_asset_server::VulkanAssets;
 use crate::{swapchain, vk_utils};
+use crate::{render_device::RenderDevice, swapchain::Swapchain};
 use ash::vk;
 use bevy::ecs::schedule::ScheduleLabel;
 use bevy::{
@@ -121,8 +122,8 @@ fn render(
     device: Res<RenderDevice>,
     mut swapchain: ResMut<Swapchain>,
     render_resources: Res<RenderResources>,
-    rt_pipelines: Res<Assets<RaytracingPipeline>>,
-    rast_pipelines: Res<Assets<RasterizationPipeline>>,
+    rt_pipelines: Res<VulkanAssets<RaytracingPipeline>>,
+    rast_pipelines: Res<VulkanAssets<RasterizationPipeline>>,
     images: Res<Assets<Image>>,
     primary_window: Query<&Window, With<PrimaryWindow>>,
 ) {
@@ -148,10 +149,7 @@ fn render(
             .get(&render_resources.render_target)
             .expect("render target not found");
 
-        if let Some(compiled) = rt_pipelines
-            .get(&render_resources.rt_pipeline)
-            .and_then(|p| p.compiled.as_ref())
-        {
+        if let Some(compiled) = rt_pipelines.get(&render_resources.rt_pipeline) {
             // update the descriptor set
             let render_target_image_binding = vk::DescriptorImageInfo::builder()
                 .image_layout(vk::ImageLayout::GENERAL)
@@ -214,10 +212,7 @@ fn render(
             vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
         );
 
-        if let Some(compiled) = rast_pipelines
-            .get(&render_resources.quad_pipeline)
-            .and_then(|x| x.compiled.as_ref())
-        {
+        if let Some(compiled) = rast_pipelines.get(&render_resources.quad_pipeline) {
             // update the descriptor set
             let render_target_image_binding = vk::DescriptorImageInfo::builder()
                 .image_layout(vk::ImageLayout::GENERAL)

@@ -1,16 +1,15 @@
 use ash::vk;
-use bevy::asset::{AssetLoader, LoadedAsset, Asset};
+use bevy::ecs::system::lifetimeless::SRes;
 use bevy::prelude::*;
 use bevy::reflect::TypeUuid;
-use bevy::utils::{HashMap, HashSet};
 use bytemuck_derive::{Pod, Zeroable};
 
-use crate::composed_asset::{ComposedAssetAppExtension, ComposedAsset, ComposedAssetEvent};
+use crate::composed_asset::{ComposedAsset, ComposedAssetAppExtension};
 use crate::render_buffer::{Buffer, BufferProvider};
 use crate::render_device::RenderDevice;
-use crate::render_plugin::{RenderSchedule, RenderSet};
 use crate::shader::{Shader, ShaderProvider};
 use crate::vk_utils;
+use crate::vulkan_asset_server::{VulkanAsset, AddVulkanAsset};
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -24,22 +23,62 @@ pub struct RaytracingPipeline {
     pub raygen_shader: Handle<Shader>,
     pub hit_shader: Handle<Shader>,
     pub miss_shader: Handle<Shader>,
-    pub compiled: Option<VkRaytracingPipeline>,
 }
 
 impl ComposedAsset for RaytracingPipeline {
     type DepType = Shader;
     fn get_deps(&self) -> Vec<&Handle<Self::DepType>> {
-        vec![
-            &self.raygen_shader,
-            &self.hit_shader,
-            &self.miss_shader,
-        ]
+        vec![&self.raygen_shader, &self.hit_shader, &self.miss_shader]
     }
 }
 
+impl VulkanAsset for RaytracingPipeline {
+    type ExtractedAsset = (Shader, Shader, Shader);
+    type PreparedAsset = VkRaytracingPipeline;
+    type Param = SRes<Assets<Shader>>;
 
-#[derive(Component)]
+    fn extract_asset(&self, shaders: &mut bevy::ecs::system::SystemParamItem<Self::Param>) -> Option<Self::ExtractedAsset> {
+        let raygen_shader = shaders.get(&self.raygen_shader)?;
+        let hit_shader = shaders.get(&self.hit_shader)?;
+        let miss_shader = shaders.get(&self.miss_shader)?;
+        Some((raygen_shader.clone(), hit_shader.clone(), miss_shader.clone()))
+    }
+
+    fn prepare_asset(device: &RenderDevice, asset: Self::ExtractedAsset) -> Self::PreparedAsset {
+        let (raygen_shader, hit_shader, miss_shader) = asset;
+        println!("creating RT pipeline");
+        let (descriptor_set_layout, pipeline_layout, vk_pipeline, nr_shader_groups) =
+            create_raytracing_pipeline(
+                &device,
+                &raygen_shader,
+                &hit_shader,
+                &miss_shader,
+            );
+        let shader_binding_table =
+            create_shader_binding_table(&device, vk_pipeline, nr_shader_groups as u32);
+
+        let descriptor_set_alloc_info = vk::DescriptorSetAllocateInfo::builder()
+            .descriptor_pool(device.descriptor_pool)
+            .set_layouts(std::slice::from_ref(&descriptor_set_layout))
+            .build();
+
+        let descriptor_set = unsafe {
+            device
+                .device
+                .allocate_descriptor_sets(&descriptor_set_alloc_info)
+                .unwrap()
+        }[0];
+
+        VkRaytracingPipeline {
+            vk_pipeline,
+            pipeline_layout,
+            descriptor_set_layout,
+            descriptor_set,
+            shader_binding_table,
+        }
+    }
+}
+
 pub struct VkRaytracingPipeline {
     pub vk_pipeline: vk::Pipeline,
     pub pipeline_layout: vk::PipelineLayout,
@@ -81,72 +120,12 @@ impl SBT {
     }
 }
 
-
 pub struct RaytracingPlugin;
 
 impl Plugin for RaytracingPlugin {
     fn build(&self, app: &mut App) {
         app.add_composed_asset::<RaytracingPipeline>();
-        app.edit_schedule(RenderSchedule, |schedule| {
-            schedule.add_system(ensure_pipeline_up_to_date.in_set(RenderSet::Extract));
-        });
-    }
-}
-
-fn ensure_pipeline_up_to_date(
-    device: Res<RenderDevice>,
-    shaders: Res<Assets<Shader>>,
-    mut pipeline_events: EventReader<ComposedAssetEvent<RaytracingPipeline>>,
-    mut pipelines: ResMut<Assets<RaytracingPipeline>>,
-) {
-    for event in pipeline_events.iter() {
-        let handle = match event {
-            ComposedAssetEvent(AssetEvent::Created { handle }) => handle,
-            ComposedAssetEvent(AssetEvent::Modified { handle }) => handle,
-            ComposedAssetEvent(AssetEvent::Removed { handle: _ }) => panic!("TODO"),
-        };
-
-        let mut pipeline = pipelines.get_mut(handle).unwrap();
-        let raygen_shader = shaders.get(&pipeline.raygen_shader);
-        let hit_shader = shaders.get(&pipeline.hit_shader);
-        let miss_shader = shaders.get(&pipeline.miss_shader);
-
-        if raygen_shader.is_none() || hit_shader.is_none() || miss_shader.is_none() {
-            println!("Not all shaders loaded, skipping pipeline reload");
-            continue;
-        }
-
-        println!("creating RT pipeline");
-
-        let (descriptor_set_layout, pipeline_layout, vk_pipeline, nr_shader_groups) =
-            create_raytracing_pipeline(
-                &device,
-                raygen_shader.unwrap(),
-                hit_shader.unwrap(),
-                miss_shader.unwrap(),
-            );
-        let shader_binding_table =
-            create_shader_binding_table(&device, vk_pipeline, nr_shader_groups as u32);
-
-        let descriptor_set_alloc_info = vk::DescriptorSetAllocateInfo::builder()
-            .descriptor_pool(device.descriptor_pool)
-            .set_layouts(std::slice::from_ref(&descriptor_set_layout))
-            .build();
-
-        let descriptor_set = unsafe {
-            device
-                .device
-                .allocate_descriptor_sets(&descriptor_set_alloc_info)
-                .unwrap()
-        }[0];
-
-        pipeline.compiled = Some(VkRaytracingPipeline {
-                vk_pipeline,
-                pipeline_layout,
-                descriptor_set_layout,
-                descriptor_set,
-                shader_binding_table,
-            });
+        app.add_vulkan_asset::<RaytracingPipeline>()
     }
 }
 
@@ -293,17 +272,14 @@ fn create_shader_binding_table(
     };
 
     let mut raygen = device.create_host_buffer::<u8>(
-        &device,
         handle_size as u64,
         vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR,
     );
     let mut miss = device.create_host_buffer::<u8>(
-        &device,
         handle_size as u64,
         vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR,
     );
     let mut hit = device.create_host_buffer::<u8>(
-        &device,
         handle_size as u64,
         vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR,
     );
@@ -314,6 +290,7 @@ fn create_shader_binding_table(
         .take(handle_size as usize)
         .enumerate()
     {
+        let mut raygen = device.map_buffer(&mut raygen);
         raygen[i] = *b;
     }
     for (i, b) in handle_data
@@ -322,6 +299,7 @@ fn create_shader_binding_table(
         .take(handle_size as usize)
         .enumerate()
     {
+        let mut miss = device.map_buffer(&mut miss);
         miss[i] = *b;
     }
     for (i, b) in handle_data
@@ -330,6 +308,7 @@ fn create_shader_binding_table(
         .take(handle_size as usize)
         .enumerate()
     {
+        let mut hit = device.map_buffer(&mut hit);
         hit[i] = *b;
     }
 

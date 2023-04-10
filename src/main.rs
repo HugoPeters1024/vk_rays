@@ -9,6 +9,7 @@ mod render_plugin;
 mod shader;
 mod swapchain;
 mod vk_utils;
+mod vulkan_asset_server;
 
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
@@ -77,7 +78,11 @@ fn startup(
         ..default()
     });
 
-    commands.insert_resource(RenderResources { rt_pipeline, quad_pipeline, ..default() });
+    commands.insert_resource(RenderResources {
+        rt_pipeline,
+        quad_pipeline,
+        ..default()
+    });
 }
 
 fn test(keyboard: Res<Input<KeyCode>>, time: Res<Time>, device: Res<RenderDevice>) {

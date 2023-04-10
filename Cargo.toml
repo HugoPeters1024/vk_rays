@@ -22,6 +22,7 @@ bevy_mod_debugdump = "0.7.0"
 clap = { version = "4.2.1", features = ["derive"] }
 bytemuck = "1.13.1"
 bytemuck_derive = "1.4.1"
+crossbeam-channel = "0.5.8"
 
 # Enable a small amount of optimization in debug mode
 [profile.dev]

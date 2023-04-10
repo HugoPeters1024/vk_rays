@@ -1,13 +1,29 @@
 use ash::extensions::khr;
 use ash::{vk, Device, Entry, Instance};
 use bevy::prelude::*;
+use bevy::utils::HashMap;
 use bevy::window::RawHandleWrapper;
 use gpu_allocator::vulkan::*;
+use gpu_allocator::AllocatorDebugSettings;
 use std::ffi::{c_char, CStr};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
-#[derive(Resource)]
-pub struct RenderDevice {
+#[derive(Resource, Clone, Deref)]
+pub struct RenderDevice(Arc<RenderDeviceImpl>);
+
+impl RenderDevice {
+    pub fn from_window(window: &RawHandleWrapper) -> Self {
+        let device = Arc::new(RenderDeviceImpl::from_window(window));
+        Self(device)
+    }
+}
+
+pub struct AllocImpl {
+    pub allocator: Allocator,
+    pub buffer_to_allocation: HashMap<vk::Buffer, Allocation>,
+}
+
+pub struct RenderDeviceImpl {
     pub entry: Entry,
     pub exts: Exts,
     pub instance: Instance,
@@ -19,10 +35,10 @@ pub struct RenderDevice {
     pub command_pool: vk::CommandPool,
     pub descriptor_pool: vk::DescriptorPool,
     pub cmd_buffer: vk::CommandBuffer,
-    pub allocator: Mutex<Allocator>,
     pub single_time_command_buffer: vk::CommandBuffer,
     pub single_time_fence: vk::Fence,
     pub nearest_sampler: vk::Sampler,
+    pub alloc_impl: Mutex<AllocImpl>,
 }
 
 pub struct Exts {
@@ -33,7 +49,7 @@ pub struct Exts {
     pub rt_acc_struct: khr::AccelerationStructure,
 }
 
-impl RenderDevice {
+impl RenderDeviceImpl {
     pub fn from_window(window: &RawHandleWrapper) -> Self {
         unsafe {
             let entry = Entry::load().unwrap();
@@ -234,21 +250,9 @@ impl RenderDevice {
                 .create_descriptor_pool(&descriptor_pool_info, None)
                 .unwrap();
 
-            let allocator = Mutex::new(
-                Allocator::new(&AllocatorCreateDesc {
-                    instance: instance.clone(),
-                    device: device.clone(),
-                    physical_device: physical_device.clone(),
-                    debug_settings: Default::default(),
-                    buffer_device_address: true,
-                })
-                .unwrap(),
-            );
-
             let single_time_command_buffer =
                 device.allocate_command_buffers(&alloc_info).unwrap()[0];
             let fence_info = vk::FenceCreateInfo::builder();
-            let single_time_fence = device.create_fence(&fence_info, None).unwrap();
 
             let single_time_fence = device.create_fence(&fence_info, None).unwrap();
             let sampler_info = vk::SamplerCreateInfo::builder()
@@ -263,7 +267,22 @@ impl RenderDevice {
                 .mipmap_mode(vk::SamplerMipmapMode::NEAREST);
             let nearest_sampler = device.create_sampler(&sampler_info, None).unwrap();
 
-            RenderDevice {
+            let alloc_impl = Mutex::new(AllocImpl {
+                allocator: Allocator::new(&AllocatorCreateDesc {
+                    instance: instance.clone(),
+                    device: device.clone(),
+                    physical_device: physical_device.clone(),
+                    debug_settings: AllocatorDebugSettings {
+                        log_leaks_on_shutdown: false,
+                        ..default()
+                    },
+                    buffer_device_address: true,
+                })
+                .unwrap(),
+                buffer_to_allocation: HashMap::new(),
+            });
+
+            Self {
                 entry,
                 exts: Exts {
                     surface: ext_surface,
@@ -281,10 +300,10 @@ impl RenderDevice {
                 command_pool,
                 descriptor_pool,
                 cmd_buffer,
-                allocator,
                 single_time_command_buffer,
                 single_time_fence,
                 nearest_sampler,
+                alloc_impl,
             }
         }
     }
@@ -338,5 +357,23 @@ impl RenderDevice {
                 u64::MAX,
             )
             .unwrap();
+    }
+}
+
+impl Drop for RenderDeviceImpl {
+    fn drop(&mut self) {
+        println!("RenderDevice is being dropped, waiting for GPU...");
+        unsafe {
+            self.device.device_wait_idle().unwrap();
+            println!("GPU is flushed, proceeding to drop RenderDevice");
+            self.device.destroy_fence(self.single_time_fence, None);
+            self.device.destroy_sampler(self.nearest_sampler, None);
+            self.device
+                .destroy_descriptor_pool(self.descriptor_pool, None);
+            self.device.destroy_command_pool(self.command_pool, None);
+            self.device.destroy_device(None);
+            self.exts.surface.destroy_surface(self.surface, None);
+            self.instance.destroy_instance(None);
+        }
     }
 }

@@ -38,7 +38,10 @@ impl ImageProvider for RenderDevice {
         initial_layout: vk::ImageLayout,
         usage: vk::ImageUsageFlags,
     ) -> Image {
-        println!("Allocating an image of type {:?} and size {}x{}", format, width, height);
+        println!(
+            "Allocating an image of type {:?} and size {}x{}",
+            format, width, height
+        );
         let image_info = vk::ImageCreateInfo::builder()
             .image_type(vk::ImageType::TYPE_2D)
             .format(format)
@@ -58,9 +61,10 @@ impl ImageProvider for RenderDevice {
 
         let requirements = unsafe { self.device.get_image_memory_requirements(handle) };
         let allocation = self
-            .allocator
+            .alloc_impl
             .lock()
             .unwrap()
+            .allocator
             .allocate(&AllocationCreateDesc {
                 name: "",
                 requirements,
@@ -71,8 +75,7 @@ impl ImageProvider for RenderDevice {
             .unwrap();
 
         unsafe {
-            self
-                .device
+            self.device
                 .bind_image_memory(handle, allocation.memory(), allocation.offset())
                 .unwrap();
         }
@@ -82,7 +85,13 @@ impl ImageProvider for RenderDevice {
 
         unsafe {
             self.run_single_commands(&|command_buffer| {
-                vk_utils::transition_image_layout(self, command_buffer, handle, vk::ImageLayout::UNDEFINED, initial_layout);
+                vk_utils::transition_image_layout(
+                    self,
+                    command_buffer,
+                    handle,
+                    vk::ImageLayout::UNDEFINED,
+                    initial_layout,
+                );
             });
         }
 

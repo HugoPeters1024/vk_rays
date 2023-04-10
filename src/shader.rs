@@ -1,4 +1,4 @@
-use std::io::Cursor;
+use std::{io::Cursor, borrow::Cow};
 
 use crate::render_device::*;
 use ash::{util::read_spv, vk};
@@ -12,7 +12,7 @@ use shaderc;
 #[uuid = "d95bc916-6c55-4de3-9622-37e7b6969fda"]
 pub struct Shader {
     pub path: String,
-    pub spirv: Vec<u8>,
+    pub spirv: Cow<'static, [u8]>,
 }
 
 pub struct ShaderLoader {
