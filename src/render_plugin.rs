@@ -1,7 +1,7 @@
 use crate::rasterization_pipeline::{RasterizationPipeline, RasterizationPipelinePlugin};
 use crate::raytracing_pipeline::{RaytracingPipeline, RaytracingPlugin};
 use crate::render_image::Image;
-use crate::vulkan_assets::{AddVulkanAsset, VulkanAssets};
+use crate::vulkan_assets::{AddVulkanAsset, VulkanAssets, VkAssetCleanupPlaybook};
 use crate::vulkan_cleanup::{VkCleanup, VulkanCleanupEvent, VulkanCleanupPlugin};
 use crate::{render_device::RenderDevice, swapchain::Swapchain};
 use crate::{swapchain, vk_utils};
@@ -9,6 +9,7 @@ use ash::vk;
 use bevy::app::AppExit;
 use bevy::ecs::event::ManualEventReader;
 use bevy::ecs::schedule::ScheduleLabel;
+use bevy::winit::WinitSettings;
 use bevy::{
     ecs::system::SystemState,
     prelude::*,
@@ -57,6 +58,10 @@ pub struct RenderPlugin;
 
 impl Plugin for RenderPlugin {
     fn build(&self, app: &mut App) {
+        // Don't ask, shit will segfault otherwise
+        let mut winit_settings = app.world.get_resource_mut::<WinitSettings>().unwrap();
+        winit_settings.return_from_run = true;
+
         let mut system_state: SystemState<Query<&RawHandleWrapper, With<PrimaryWindow>>> =
             SystemState::new(&mut app.world);
         let query = system_state.get(&app.world);
@@ -78,7 +83,7 @@ impl Plugin for RenderPlugin {
         app.add_plugin(RasterizationPipelinePlugin);
 
         app.add_system(run_render_schedule);
-        app.add_system(on_exit);
+        app.add_system(shutdown.in_base_set(CoreSet::Last));
 
         app.add_asset::<crate::shader::Shader>()
             .init_asset_loader::<crate::shader::ShaderLoader>()
@@ -365,9 +370,15 @@ fn render(
     }
 }
 
-fn on_exit(exit_events: Res<Events<AppExit>>) {
-    let mut event_reader = ManualEventReader::default();
-    if event_reader.iter(&exit_events).last().is_some() {
-        panic!("Exiting");
+fn shutdown(world: &mut World) {
+    let mut exit_reader = ManualEventReader::<AppExit>::default();
+    let exit_events = world.get_resource::<Events<AppExit>>().unwrap();
+
+    if exit_reader.iter(exit_events).last().is_some() {
+        let mut cleanup_playbook = world.remove_resource::<VkAssetCleanupPlaybook>().unwrap();
+        cleanup_playbook.run(world);
+
+        let cleanup = world.remove_resource::<VkCleanup>().unwrap();
+        cleanup.flush_and_die();
     }
 }

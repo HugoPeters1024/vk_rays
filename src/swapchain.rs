@@ -1,4 +1,4 @@
-use crate::render_device::RenderDevice;
+use crate::{render_device::RenderDevice, vulkan_cleanup::{VkCleanup, VulkanCleanupEvent}};
 use ash::vk;
 use bevy::{
     ecs::system::SystemState,
@@ -17,7 +17,8 @@ impl Plugin for SwapchainPlugin {
         let (primary_window_e, primary_window, whandles) = query.get_single().unwrap();
 
         let render_device = app.world.get_resource::<RenderDevice>().unwrap();
-        let swapchain = Swapchain::new(render_device.clone(), whandles, primary_window);
+        let cleanup = app.world.get_resource::<VkCleanup>().unwrap();
+        let swapchain = Swapchain::new(render_device.clone(), cleanup.clone(), whandles, primary_window);
 
         app.world.entity_mut(primary_window_e).insert(swapchain);
     }
@@ -25,6 +26,7 @@ impl Plugin for SwapchainPlugin {
 
 #[derive(Component)]
 pub struct Swapchain {
+    cleanup: VkCleanup,
     device: RenderDevice,
     pub surface: vk::SurfaceKHR,
     pub handle: vk::SwapchainKHR,
@@ -39,7 +41,7 @@ pub struct Swapchain {
 }
 
 impl Swapchain {
-    pub fn new(device: RenderDevice, whandles: &RawHandleWrapper, window: &Window) -> Self {
+    pub fn new(device: RenderDevice, cleanup: VkCleanup, whandles: &RawHandleWrapper, window: &Window) -> Self {
         unsafe {
             let surface = device.create_surface(whandles);
             let semaphore_info = vk::SemaphoreCreateInfo::builder();
@@ -56,6 +58,7 @@ impl Swapchain {
             let fence = device.device.create_fence(&fence_info, None).unwrap();
 
             let mut ret = Self {
+                cleanup,
                 device,
                 surface,
                 handle: vk::SwapchainKHR::null(),
@@ -168,10 +171,11 @@ impl Swapchain {
             .create_swapchain(&swapchain_create_info, None)
             .unwrap();
 
-        self.device
-            .exts
-            .swapchain
-            .destroy_swapchain(old_swapchain, None);
+        // Cleanup old swapchain
+        for view in self.views.iter() {
+            self.cleanup.send(VulkanCleanupEvent::ImageView(*view));
+        }
+        self.cleanup.send(VulkanCleanupEvent::Swapchain(old_swapchain));
 
         self.images = self
             .device
@@ -180,9 +184,6 @@ impl Swapchain {
             .get_swapchain_images(self.handle)
             .unwrap();
 
-        for view in self.views.iter() {
-            self.device.device.destroy_image_view(*view, None);
-        }
 
         self.views = self
             .images
