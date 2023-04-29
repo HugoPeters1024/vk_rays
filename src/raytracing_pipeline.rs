@@ -9,7 +9,8 @@ use crate::render_buffer::{Buffer, BufferProvider};
 use crate::render_device::RenderDevice;
 use crate::shader::{Shader, ShaderProvider};
 use crate::vk_utils;
-use crate::vulkan_asset_server::{VulkanAsset, AddVulkanAsset};
+use crate::vulkan_assets::{VulkanAsset, AddVulkanAsset};
+use crate::vulkan_cleanup::{VkCleanup, VulkanCleanupEvent};
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -76,6 +77,15 @@ impl VulkanAsset for RaytracingPipeline {
             descriptor_set,
             shader_binding_table,
         }
+    }
+
+    fn destroy_asset(asset: Self::PreparedAsset, cleanup: &VkCleanup) {
+        cleanup.send(VulkanCleanupEvent::Pipeline(asset.vk_pipeline));
+        cleanup.send(VulkanCleanupEvent::PipelineLayout(asset.pipeline_layout));
+        cleanup.send(VulkanCleanupEvent::DescriptorSetLayout(asset.descriptor_set_layout));
+        cleanup.send(VulkanCleanupEvent::Buffer(asset.shader_binding_table.raygen.handle));
+        cleanup.send(VulkanCleanupEvent::Buffer(asset.shader_binding_table.miss.handle));
+        cleanup.send(VulkanCleanupEvent::Buffer(asset.shader_binding_table.hit.handle));
     }
 }
 
@@ -241,6 +251,12 @@ fn create_raytracing_pipeline(
             )
             .unwrap()[0]
     };
+
+    for stage in shader_stages {
+        unsafe {
+            device.device.destroy_shader_module(stage.module, None);
+        }
+    }
 
     (
         descriptor_set_layout,

@@ -9,17 +9,21 @@ mod render_plugin;
 mod shader;
 mod swapchain;
 mod vk_utils;
-mod vulkan_asset_server;
+mod vulkan_assets;
+mod vulkan_cleanup;
 
+use bevy::app::AppExit;
+use bevy::ecs::event::ManualEventReader;
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use clap::Parser;
 use rasterization_pipeline::RasterizationPipeline;
 use render_plugin::RenderResources;
 use shader::Shader;
+use vulkan_assets::VkAssetCleanupPlaybook;
+use vulkan_cleanup::VkCleanup;
 
 use crate::raytracing_pipeline::RaytracingPipeline;
-use crate::render_device::RenderDevice;
 use crate::render_plugin::RenderPlugin;
 
 #[derive(Parser)]
@@ -43,7 +47,7 @@ fn main() {
 
     app.add_plugin(RenderPlugin)
         .add_startup_system(startup)
-        .add_system(test);
+        .add_system(shutdown.in_base_set(CoreSet::Last));
 
     if args.dump_schedule {
         bevy_mod_debugdump::print_main_schedule(&mut app);
@@ -85,12 +89,15 @@ fn startup(
     });
 }
 
-fn test(keyboard: Res<Input<KeyCode>>, time: Res<Time>, device: Res<RenderDevice>) {
-    if keyboard.just_pressed(KeyCode::F) {
-        println!(
-            "[{}] fps: {}",
-            device.device_name(),
-            1.0 / time.delta_seconds()
-        );
+fn shutdown(world: &mut World) {
+    let mut exit_reader = ManualEventReader::<AppExit>::default();
+    let exit_events = world.get_resource::<Events<AppExit>>().unwrap();
+
+    if exit_reader.iter(exit_events).last().is_some() {
+        let mut cleanup_playbook = world.remove_resource::<VkAssetCleanupPlaybook>().unwrap();
+        cleanup_playbook.run(world);
+
+        let cleanup = world.remove_resource::<VkCleanup>().unwrap();
+        cleanup.flush_and_die();
     }
 }

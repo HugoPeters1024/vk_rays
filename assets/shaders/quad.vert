@@ -1,7 +1,7 @@
 #version 460
 
 vec2 verts[3] = vec2[](
-    vec2(-1.0f, -1.0f),
+    vec2(-1.0, -1.0f),
     vec2(3.0f, -1.0f),
     vec2(-1.0f, 3.0f)
 );

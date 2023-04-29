@@ -6,14 +6,14 @@ use bevy::reflect::TypeUuid;
 use crate::composed_asset::{ComposedAsset, ComposedAssetAppExtension};
 use crate::render_device::RenderDevice;
 use crate::shader::{Shader, ShaderProvider};
-use crate::vulkan_asset_server::{VulkanAsset, AddVulkanAsset};
+use crate::vulkan_assets::{VulkanAsset, AddVulkanAsset};
+use crate::vulkan_cleanup::{VkCleanup, VulkanCleanupEvent};
 
 #[derive(Default, TypeUuid)]
 #[uuid = "f5b5b0f0-1b5f-4b0e-9c1f-1f1b0c0c0c0c"]
 pub struct RasterizationPipeline {
     pub vs_shader: Handle<Shader>,
     pub fs_shader: Handle<Shader>,
-    pub compiled: Option<VkRasterizationPipeline>,
 }
 
 impl ComposedAsset for RasterizationPipeline {
@@ -44,6 +44,14 @@ impl VulkanAsset for RasterizationPipeline {
             &fs_shader,
         )
     }
+
+    fn destroy_asset(asset: VkRasterizationPipeline, cleanup: &VkCleanup) {
+        cleanup.send(VulkanCleanupEvent::ShaderModule(asset.vert_module));
+        cleanup.send(VulkanCleanupEvent::ShaderModule(asset.frag_module));
+        cleanup.send(VulkanCleanupEvent::Pipeline(asset.vk_pipeline));
+        cleanup.send(VulkanCleanupEvent::PipelineLayout(asset.pipeline_layout));
+        cleanup.send(VulkanCleanupEvent::DescriptorSetLayout(asset.descriptor_set_layout));
+    }
 }
 
 pub struct VkRasterizationPipeline {
@@ -51,6 +59,8 @@ pub struct VkRasterizationPipeline {
     pub pipeline_layout: vk::PipelineLayout,
     pub descriptor_set_layout: vk::DescriptorSetLayout,
     pub descriptor_set: vk::DescriptorSet,
+    pub vert_module: vk::ShaderModule,
+    pub frag_module: vk::ShaderModule,
 }
 
 pub struct RasterizationPipelinePlugin;
@@ -135,6 +145,8 @@ fn create_rast_pipeline(
         pipeline_layout,
         descriptor_set_layout,
         descriptor_set,
+        vert_module: shader_stages[0].module,
+        frag_module: shader_stages[1].module,
     }
 }
 

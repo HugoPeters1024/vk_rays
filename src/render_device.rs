@@ -6,7 +6,7 @@ use bevy::window::RawHandleWrapper;
 use gpu_allocator::vulkan::*;
 use gpu_allocator::AllocatorDebugSettings;
 use std::ffi::{c_char, CStr};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock, Mutex, RwLockReadGuard, RwLockWriteGuard};
 
 #[derive(Resource, Clone, Deref)]
 pub struct RenderDevice(Arc<RenderDeviceImpl>);
@@ -21,24 +21,35 @@ impl RenderDevice {
 pub struct AllocImpl {
     pub allocator: Allocator,
     pub buffer_to_allocation: HashMap<vk::Buffer, Allocation>,
+    pub image_to_allocation: HashMap<vk::Image, Allocation>,
+}
+
+impl Drop for AllocImpl {
+    fn drop(&mut self) {
+        if !self.buffer_to_allocation.is_empty() {
+            println!("Some buffers were not freed");
+        }
+        if !self.image_to_allocation.is_empty() {
+            println!("Some images were not freed");
+        }
+    }
 }
 
 pub struct RenderDeviceImpl {
     pub entry: Entry,
     pub exts: Exts,
     pub instance: Instance,
-    pub surface: vk::SurfaceKHR,
     pub physical_device: vk::PhysicalDevice,
     pub device: Device,
     pub queue_family_idx: u32,
-    pub queue: vk::Queue,
+    pub queue: Arc<Mutex<vk::Queue>>,
     pub command_pool: vk::CommandPool,
     pub descriptor_pool: vk::DescriptorPool,
     pub cmd_buffer: vk::CommandBuffer,
     pub single_time_command_buffer: vk::CommandBuffer,
     pub single_time_fence: vk::Fence,
     pub nearest_sampler: vk::Sampler,
-    pub alloc_impl: Mutex<AllocImpl>,
+    pub alloc: Option<RwLock<AllocImpl>>,
 }
 
 pub struct Exts {
@@ -142,6 +153,8 @@ impl RenderDeviceImpl {
                     })
                 })
                 .unwrap();
+
+            ext_surface.destroy_surface(surface, None);
 
             let device_properties = instance.get_physical_device_properties(physical_device);
             println!(
@@ -267,7 +280,7 @@ impl RenderDeviceImpl {
                 .mipmap_mode(vk::SamplerMipmapMode::NEAREST);
             let nearest_sampler = device.create_sampler(&sampler_info, None).unwrap();
 
-            let alloc_impl = Mutex::new(AllocImpl {
+            let alloc = Some(RwLock::new(AllocImpl {
                 allocator: Allocator::new(&AllocatorCreateDesc {
                     instance: instance.clone(),
                     device: device.clone(),
@@ -280,7 +293,8 @@ impl RenderDeviceImpl {
                 })
                 .unwrap(),
                 buffer_to_allocation: HashMap::new(),
-            });
+                image_to_allocation: HashMap::new(),
+            }));
 
             Self {
                 entry,
@@ -292,18 +306,17 @@ impl RenderDeviceImpl {
                     rt_acc_struct: khr::AccelerationStructure::new(&instance, &device),
                 },
                 instance,
-                surface,
                 physical_device,
                 device,
                 queue_family_idx,
-                queue,
+                queue: Arc::new(Mutex::new(queue)),
                 command_pool,
                 descriptor_pool,
                 cmd_buffer,
                 single_time_command_buffer,
                 single_time_fence,
                 nearest_sampler,
-                alloc_impl,
+                alloc,
             }
         }
     }
@@ -317,6 +330,14 @@ impl RenderDeviceImpl {
                 .unwrap()
                 .to_string()
         }
+    }
+
+    pub fn read_alloc(&self) -> RwLockReadGuard<AllocImpl>  {
+        self.alloc.as_ref().unwrap().read().unwrap()
+    }
+
+    pub fn write_alloc(&self) -> RwLockWriteGuard<AllocImpl> {
+        self.alloc.as_ref().unwrap().write().unwrap()
     }
 
     pub unsafe fn run_single_commands(&self, f: &dyn Fn(vk::CommandBuffer)) {
@@ -342,13 +363,16 @@ impl RenderDeviceImpl {
         let submit_info = vk::SubmitInfo::builder()
             .command_buffers(std::slice::from_ref(&self.single_time_command_buffer));
 
-        self.device
-            .queue_submit(
-                self.queue,
-                std::slice::from_ref(&submit_info),
-                self.single_time_fence,
-            )
-            .unwrap();
+        {
+            let queue = self.queue.lock().unwrap();
+            self.device
+                .queue_submit(
+                    queue.clone(),
+                    std::slice::from_ref(&submit_info),
+                    self.single_time_fence,
+                )
+                .unwrap();
+        }
 
         self.device
             .wait_for_fences(
@@ -358,22 +382,50 @@ impl RenderDeviceImpl {
             )
             .unwrap();
     }
+
+    pub fn wait_idle(&self) {
+        let queue = self.queue.lock().unwrap();
+        unsafe {
+            self.device.queue_wait_idle(queue.clone()).unwrap();
+        }
+    }
+
+    pub fn create_surface(&self, handles: &RawHandleWrapper) -> vk::SurfaceKHR {
+        unsafe {
+            ash_window::create_surface(
+                &self.entry,
+                &self.instance,
+                handles.display_handle,
+                handles.window_handle,
+                None,
+            )
+        }.unwrap()
+    }
 }
 
 impl Drop for RenderDeviceImpl {
     fn drop(&mut self) {
-        println!("RenderDevice is being dropped, waiting for GPU...");
+        println!("RenderDevice is being dropped");
+        self.wait_idle();
+        println!("RenderDevice is being dropped");
+        println!("Destroying allocator");
+        let alloc = self.alloc.take().unwrap();
+        drop(alloc);
         unsafe {
-            self.device.device_wait_idle().unwrap();
-            println!("GPU is flushed, proceeding to drop RenderDevice");
+            println!("Destroying single time fence");
             self.device.destroy_fence(self.single_time_fence, None);
+            println!("Destroying nearest sampler");
             self.device.destroy_sampler(self.nearest_sampler, None);
+            println!("Destroying descriptor pool");
             self.device
                 .destroy_descriptor_pool(self.descriptor_pool, None);
+            println!("Destroying command pool");
             self.device.destroy_command_pool(self.command_pool, None);
+            println!("Destroying device");
             self.device.destroy_device(None);
-            self.exts.surface.destroy_surface(self.surface, None);
+            println!("Destroying instance");
             self.instance.destroy_instance(None);
         }
+        println!("RenderDevice has been dropped");
     }
 }

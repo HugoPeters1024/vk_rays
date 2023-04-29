@@ -76,24 +76,29 @@ impl BufferProvider for RenderDevice {
             .size(nr_elements * std::mem::size_of::<T>() as u64)
             .usage(usage);
 
-        let mut alloc_impl = self.alloc_impl.lock().unwrap();
         let handle = unsafe { self.device.create_buffer(&buffer_info, None).unwrap() };
         let requirements = unsafe { self.device.get_buffer_memory_requirements(handle) };
-        let allocation = alloc_impl
-            .allocator
-            .allocate(&AllocationCreateDesc {
-                name: "",
-                requirements,
-                location,
-                linear: true,
-                allocation_scheme: AllocationScheme::GpuAllocatorManaged,
-            })
-            .unwrap();
 
-        unsafe {
-            self.device
-                .bind_buffer_memory(handle, allocation.memory(), allocation.offset())
+        {
+            let mut alloc_impl = self.write_alloc();
+            let allocation = alloc_impl
+                .allocator
+                .allocate(&AllocationCreateDesc {
+                    name: "",
+                    requirements,
+                    location,
+                    linear: true,
+                    allocation_scheme: AllocationScheme::GpuAllocatorManaged,
+                })
                 .unwrap();
+
+            unsafe {
+                self.device
+                    .bind_buffer_memory(handle, allocation.memory(), allocation.offset())
+                    .unwrap();
+            }
+
+            alloc_impl.buffer_to_allocation.insert(handle, allocation);
         }
 
         let address = unsafe {
@@ -103,8 +108,6 @@ impl BufferProvider for RenderDevice {
                     .build(),
             )
         };
-
-        alloc_impl.buffer_to_allocation.insert(handle, allocation);
 
         Buffer {
             handle,
@@ -134,9 +137,16 @@ impl BufferProvider for RenderDevice {
     }
 
     fn map_buffer<T>(&self, buffer: &mut Buffer<T>) -> BufferView<T> {
-        let alloc_impl = self.alloc_impl.lock().unwrap();
-        let ptr = alloc_impl.buffer_to_allocation.get(&buffer.handle).unwrap().mapped_ptr().unwrap().as_ptr().cast::<T>();
-        drop(alloc_impl);
+        let alloc = self.read_alloc();
+        let ptr = alloc
+            .buffer_to_allocation
+            .get(&buffer.handle)
+            .unwrap()
+            .mapped_ptr()
+            .unwrap()
+            .as_ptr()
+            .cast::<T>();
+        drop(alloc);
 
         BufferView {
             ptr,
@@ -146,6 +156,5 @@ impl BufferProvider for RenderDevice {
 }
 
 impl<T> Drop for Buffer<T> {
-    fn drop(&mut self) {
-    }
+    fn drop(&mut self) {}
 }

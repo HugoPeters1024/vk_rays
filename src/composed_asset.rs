@@ -42,7 +42,7 @@ fn promote_composed_asset_events<T: ComposedAsset>(
             match event {
                 AssetEvent::Created { handle } => deps_changed |= dependencies.contains(&handle),
                 AssetEvent::Modified { handle } => deps_changed |= dependencies.contains(&handle),
-                AssetEvent::Removed { handle } => deps_changed |= dependencies.contains(&handle),
+                AssetEvent::Removed { handle: _ } => {},
             }
         }
 
