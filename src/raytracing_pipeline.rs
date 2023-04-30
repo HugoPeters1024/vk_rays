@@ -135,7 +135,7 @@ pub struct RaytracingPlugin;
 impl Plugin for RaytracingPlugin {
     fn build(&self, app: &mut App) {
         app.add_composed_asset::<RaytracingPipeline>();
-        app.add_vulkan_asset::<RaytracingPipeline>()
+        app.add_vulkan_asset::<RaytracingPipeline>();
     }
 }
 

@@ -178,13 +178,15 @@ fn destroy_vulkan_asset<T: VulkanAsset>(mut vk_assets: ResMut<VulkanAssets<T>>, 
 }
 
 pub trait AddVulkanAsset {
-    fn add_vulkan_asset<T: VulkanAsset>(&mut self);
+    fn add_vulkan_asset<T: VulkanAsset>(&mut self) -> &mut Self;
 }
 
 impl AddVulkanAsset for App {
-    fn add_vulkan_asset<T: VulkanAsset>(&mut self) {
+    fn add_vulkan_asset<T: VulkanAsset>(&mut self) -> &mut Self {
         self.add_plugin(VulkanAssetPlugin::<T> {
             _phantom: std::marker::PhantomData,
         });
+
+        self
     }
 }

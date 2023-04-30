@@ -114,7 +114,7 @@ impl VkCleanupImpl {
 fn vulkan_cleanup_worker(device: RenderDevice, recv: Receiver<VulkanCleanupEvent>) {
     println!("Vulkan cleanup thread started");
     let mut cycle_buffer: VecDeque<Vec<VulkanCleanupEvent>> = VecDeque::new();
-    for _ in 0..8 {
+    for _ in 0..3 {
         cycle_buffer.push_back(Vec::new());
     }
 
@@ -152,9 +152,9 @@ fn vulkan_cleanup_worker(device: RenderDevice, recv: Receiver<VulkanCleanupEvent
     println!("Vulkan cleanup thread finished");
 }
 
-pub struct VulkanCleanupPlugin;
+pub struct VkCleanupPlugin;
 
-impl Plugin for VulkanCleanupPlugin {
+impl Plugin for VkCleanupPlugin {
     fn build(&self, app: &mut App) {
         let render_device = app.world.get_resource::<RenderDevice>().unwrap().clone();
         app.insert_resource(VkCleanup::new(render_device));

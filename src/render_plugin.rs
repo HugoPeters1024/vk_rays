@@ -2,7 +2,7 @@ use crate::rasterization_pipeline::{RasterizationPipeline, RasterizationPipeline
 use crate::raytracing_pipeline::{RaytracingPipeline, RaytracingPlugin};
 use crate::render_image::Image;
 use crate::vulkan_assets::{AddVulkanAsset, VulkanAssets, VkAssetCleanupPlaybook};
-use crate::vulkan_cleanup::{VkCleanup, VulkanCleanupEvent, VulkanCleanupPlugin};
+use crate::vulkan_cleanup::{VkCleanup, VulkanCleanupEvent, VkCleanupPlugin};
 use crate::{render_device::RenderDevice, swapchain::Swapchain};
 use crate::{swapchain, vk_utils};
 use ash::vk;
@@ -69,7 +69,7 @@ impl Plugin for RenderPlugin {
         let render_device = RenderDevice::from_window(whandles);
         app.world.insert_resource(render_device);
 
-        app.add_plugin(VulkanCleanupPlugin);
+        app.add_plugin(VkCleanupPlugin);
 
         let mut render_schedule = RenderSet::base_schedule();
         render_schedule.add_system(prepare_render_target.in_set(RenderSet::Prepare));
@@ -89,7 +89,10 @@ impl Plugin for RenderPlugin {
             .init_asset_loader::<crate::shader::ShaderLoader>()
             .init_debug_asset_loader::<crate::shader::ShaderLoader>()
             .add_asset::<crate::render_image::Image>()
-            .add_vulkan_asset::<crate::render_image::Image>();
+            .add_vulkan_asset::<crate::render_image::Image>()
+            .add_asset::<crate::gltf_assets::Gltf>()
+            .init_asset_loader::<crate::gltf_assets::GltfLoader>()
+            .init_debug_asset_loader::<crate::gltf_assets::GltfLoader>();
     }
 }
 

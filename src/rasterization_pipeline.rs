@@ -46,8 +46,6 @@ impl VulkanAsset for RasterizationPipeline {
     }
 
     fn destroy_asset(asset: VkRasterizationPipeline, cleanup: &VkCleanup) {
-        cleanup.send(VulkanCleanupEvent::ShaderModule(asset.vert_module));
-        cleanup.send(VulkanCleanupEvent::ShaderModule(asset.frag_module));
         cleanup.send(VulkanCleanupEvent::Pipeline(asset.vk_pipeline));
         cleanup.send(VulkanCleanupEvent::PipelineLayout(asset.pipeline_layout));
         cleanup.send(VulkanCleanupEvent::DescriptorSetLayout(asset.descriptor_set_layout));
@@ -59,8 +57,6 @@ pub struct VkRasterizationPipeline {
     pub pipeline_layout: vk::PipelineLayout,
     pub descriptor_set_layout: vk::DescriptorSetLayout,
     pub descriptor_set: vk::DescriptorSet,
-    pub vert_module: vk::ShaderModule,
-    pub frag_module: vk::ShaderModule,
 }
 
 pub struct RasterizationPipelinePlugin;
@@ -140,13 +136,16 @@ fn create_rast_pipeline(
     }
     .unwrap()[0];
 
+    unsafe {
+        device.device.destroy_shader_module(shader_stages[0].module, None);
+        device.device.destroy_shader_module(shader_stages[1].module, None);
+    }
+
     VkRasterizationPipeline {
         vk_pipeline: pipeline,
         pipeline_layout,
         descriptor_set_layout,
         descriptor_set,
-        vert_module: shader_stages[0].module,
-        frag_module: shader_stages[1].module,
     }
 }
 
