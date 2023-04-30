@@ -1,4 +1,6 @@
+mod acceleration_structure;
 mod composed_asset;
+mod gltf_assets;
 mod initializers;
 mod rasterization_pipeline;
 mod raytracing_pipeline;
@@ -6,17 +8,17 @@ mod render_buffer;
 mod render_device;
 mod render_image;
 mod render_plugin;
+mod scene;
 mod shader;
 mod swapchain;
 mod vk_utils;
 mod vulkan_assets;
-mod gltf_assets;
 mod vulkan_cleanup;
 
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use clap::Parser;
-use gltf_assets::Gltf;
+use gltf_assets::GltfMesh;
 use rasterization_pipeline::RasterizationPipeline;
 use render_plugin::RenderResources;
 use shader::Shader;
@@ -56,7 +58,7 @@ fn main() {
 
 #[derive(Resource)]
 struct Lol {
-    box_mesh: Handle<Gltf>,
+    box_mesh: Handle<GltfMesh>,
 }
 
 fn startup(
@@ -65,11 +67,8 @@ fn startup(
     mut rt_pipelines: ResMut<Assets<RaytracingPipeline>>,
     mut rast_pipelines: ResMut<Assets<RasterizationPipeline>>,
 ) {
-
-    let lol = Lol {
-        box_mesh: assets.load("models/box.glb"),
-    };
-    commands.insert_resource(lol);
+    let box_mesh: Handle<GltfMesh> = assets.load("models/box.glb");
+    commands.spawn(box_mesh);
 
     let raygen_shader: Handle<Shader> = assets.load("shaders/raygen.rgen");
     let hit_shader: Handle<Shader> = assets.load("shaders/hit.rchit");

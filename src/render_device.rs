@@ -6,7 +6,7 @@ use bevy::window::RawHandleWrapper;
 use gpu_allocator::vulkan::*;
 use gpu_allocator::AllocatorDebugSettings;
 use std::ffi::{c_char, CStr};
-use std::sync::{Arc, RwLock, Mutex, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 #[derive(Resource, Clone, Deref)]
 pub struct RenderDevice(Arc<RenderDeviceImpl>);
@@ -44,6 +44,7 @@ pub struct RenderDeviceImpl {
     pub queue_family_idx: u32,
     pub queue: Arc<Mutex<vk::Queue>>,
     pub command_pool: vk::CommandPool,
+    pub asset_command_pool: Mutex<vk::CommandPool>,
     pub descriptor_pool: vk::DescriptorPool,
     pub cmd_buffer: vk::CommandBuffer,
     pub single_time_command_buffer: vk::CommandBuffer,
@@ -239,6 +240,7 @@ impl RenderDeviceImpl {
                 .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER);
 
             let command_pool = device.create_command_pool(&pool_info, None).unwrap();
+            let asset_command_pool = device.create_command_pool(&pool_info, None).unwrap();
             let alloc_info = vk::CommandBufferAllocateInfo::builder()
                 .command_pool(command_pool)
                 .level(vk::CommandBufferLevel::PRIMARY)
@@ -311,6 +313,7 @@ impl RenderDeviceImpl {
                 queue_family_idx,
                 queue: Arc::new(Mutex::new(queue)),
                 command_pool,
+                asset_command_pool: Mutex::new(asset_command_pool),
                 descriptor_pool,
                 cmd_buffer,
                 single_time_command_buffer,
@@ -320,6 +323,7 @@ impl RenderDeviceImpl {
             }
         }
     }
+
     pub fn device_name(&self) -> String {
         unsafe {
             let device_properties = self
@@ -332,12 +336,53 @@ impl RenderDeviceImpl {
         }
     }
 
-    pub fn read_alloc(&self) -> RwLockReadGuard<AllocImpl>  {
+    pub fn read_alloc(&self) -> RwLockReadGuard<AllocImpl> {
         self.alloc.as_ref().unwrap().read().unwrap()
     }
 
     pub fn write_alloc(&self) -> RwLockWriteGuard<AllocImpl> {
         self.alloc.as_ref().unwrap().write().unwrap()
+    }
+
+    pub fn run_asset_commands(&self, f: impl FnOnce(vk::CommandBuffer)) {
+        let fence_info = vk::FenceCreateInfo::builder();
+        let fence = unsafe { self.device.create_fence(&fence_info, None) }.unwrap();
+        let asset_command_pool = self.asset_command_pool.lock().unwrap();
+        let alloc_info = vk::CommandBufferAllocateInfo::builder()
+            .command_pool(*asset_command_pool)
+            .level(vk::CommandBufferLevel::PRIMARY)
+            .command_buffer_count(1);
+        let cmd_buffer = unsafe { self.device.allocate_command_buffers(&alloc_info) }.unwrap()[0];
+        let begin_info = vk::CommandBufferBeginInfo::builder()
+            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+        unsafe { self.device.begin_command_buffer(cmd_buffer, &begin_info) }.unwrap();
+
+        f(cmd_buffer);
+
+        unsafe { self.device.end_command_buffer(cmd_buffer) }.unwrap();
+
+        unsafe { self.device.reset_fences(std::slice::from_ref(&fence)) }.unwrap();
+        let submit_info =
+            vk::SubmitInfo::builder().command_buffers(std::slice::from_ref(&cmd_buffer));
+
+        {
+            let queue = self.queue.lock().unwrap();
+            unsafe {
+                self.device
+                    .queue_submit(queue.clone(), std::slice::from_ref(&submit_info), fence)
+            }
+            .unwrap();
+        }
+
+        unsafe {
+            self.device
+                .wait_for_fences(std::slice::from_ref(&fence), true, u64::MAX)
+        }
+        .unwrap();
+
+        unsafe {
+            self.device.destroy_fence(fence, None);
+        }
     }
 
     pub unsafe fn run_single_commands(&self, f: &dyn Fn(vk::CommandBuffer)) {
@@ -399,7 +444,8 @@ impl RenderDeviceImpl {
                 handles.window_handle,
                 None,
             )
-        }.unwrap()
+        }
+        .unwrap()
     }
 }
 
@@ -407,23 +453,20 @@ impl Drop for RenderDeviceImpl {
     fn drop(&mut self) {
         println!("RenderDevice is being dropped");
         self.wait_idle();
-        println!("RenderDevice is being dropped");
-        println!("Destroying allocator");
         let alloc = self.alloc.take().unwrap();
         drop(alloc);
         unsafe {
-            println!("Destroying single time fence");
+            {
+                let asset_command_pool = self.asset_command_pool.lock().unwrap();
+                self.device
+                    .destroy_command_pool(*asset_command_pool, None);
+            }
             self.device.destroy_fence(self.single_time_fence, None);
-            println!("Destroying nearest sampler");
             self.device.destroy_sampler(self.nearest_sampler, None);
-            println!("Destroying descriptor pool");
             self.device
                 .destroy_descriptor_pool(self.descriptor_pool, None);
-            println!("Destroying command pool");
             self.device.destroy_command_pool(self.command_pool, None);
-            println!("Destroying device");
             self.device.destroy_device(None);
-            println!("Destroying instance");
             self.instance.destroy_instance(None);
         }
         println!("RenderDevice has been dropped");

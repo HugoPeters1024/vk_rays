@@ -6,7 +6,7 @@ use std::{collections::VecDeque, sync::{Arc, Mutex}};
 use crate::render_device::RenderDevice;
 
 #[derive(Debug)]
-pub enum VulkanCleanupEvent {
+pub enum VkCleanupEvent {
     SignalShutdown,
     SignalNextFrame,
     DescriptorSetLayout(vk::DescriptorSetLayout),
@@ -19,22 +19,23 @@ pub enum VulkanCleanupEvent {
     Fence(vk::Fence),
     ShaderModule(vk::ShaderModule),
     Swapchain(vk::SwapchainKHR),
+    AccelerationStructure(vk::AccelerationStructureKHR),
 }
 
-impl VulkanCleanupEvent {
+impl VkCleanupEvent {
     fn execute(self, device: &RenderDevice) {
         println!("Executing cleanup event: {:?}", self);
         match self {
-            VulkanCleanupEvent::DescriptorSetLayout(layout) => unsafe {
+            VkCleanupEvent::DescriptorSetLayout(layout) => unsafe {
                 device.device.destroy_descriptor_set_layout(layout, None);
             },
-            VulkanCleanupEvent::PipelineLayout(layout) => unsafe {
+            VkCleanupEvent::PipelineLayout(layout) => unsafe {
                 device.device.destroy_pipeline_layout(layout, None);
             },
-            VulkanCleanupEvent::Pipeline(pipeline) => unsafe {
+            VkCleanupEvent::Pipeline(pipeline) => unsafe {
                 device.device.destroy_pipeline(pipeline, None);
             },
-            VulkanCleanupEvent::Buffer(buffer) => {
+            VkCleanupEvent::Buffer(buffer) => {
                 let mut alloc_info = device.write_alloc();
                 if let Some(allocation) = alloc_info.buffer_to_allocation.remove(&buffer) {
                     alloc_info.allocator.free(allocation).unwrap();
@@ -43,10 +44,10 @@ impl VulkanCleanupEvent {
                     device.device.destroy_buffer(buffer, None);
                 }
             }
-            VulkanCleanupEvent::ImageView(image_view) => unsafe {
+            VkCleanupEvent::ImageView(image_view) => unsafe {
                 device.device.destroy_image_view(image_view, None);
             },
-            VulkanCleanupEvent::Image(image) => {
+            VkCleanupEvent::Image(image) => {
                 let mut alloc_info = device.write_alloc();
                 if let Some(allocation) = alloc_info.image_to_allocation.remove(&image) {
                     alloc_info.allocator.free(allocation).unwrap();
@@ -55,17 +56,23 @@ impl VulkanCleanupEvent {
                     device.device.destroy_image(image, None);
                 }
             }
-            VulkanCleanupEvent::Semaphore(semaphore) => unsafe {
+            VkCleanupEvent::Semaphore(semaphore) => unsafe {
                 device.device.destroy_semaphore(semaphore, None);
             },
-            VulkanCleanupEvent::Fence(fence) => unsafe {
+            VkCleanupEvent::Fence(fence) => unsafe {
                 device.device.destroy_fence(fence, None);
             },
-            VulkanCleanupEvent::ShaderModule(shader_module) => unsafe {
+            VkCleanupEvent::ShaderModule(shader_module) => unsafe {
                 device.device.destroy_shader_module(shader_module, None);
             },   
-            VulkanCleanupEvent::Swapchain(swapchain) => unsafe {
+            VkCleanupEvent::Swapchain(swapchain) => unsafe {
                 device.exts.swapchain.destroy_swapchain(swapchain, None);
+            },
+            VkCleanupEvent::AccelerationStructure(acceleration_structure) => unsafe {
+                device
+                    .exts
+                    .rt_acc_struct
+                    .destroy_acceleration_structure(acceleration_structure, None);
             },
             _ => panic!("Signal events should not be here"),
         }
@@ -77,7 +84,7 @@ pub struct VkCleanup(Arc<VkCleanupImpl>);
 
 #[derive(Resource)]
 pub struct VkCleanupImpl {
-    send: Sender<VulkanCleanupEvent>,
+    send: Sender<VkCleanupEvent>,
     thread: Mutex<Option<std::thread::JoinHandle<()>>>,
 }
 
@@ -96,7 +103,7 @@ impl VkCleanup {
         }))
     }
 
-    pub fn send(&self, event: VulkanCleanupEvent) {
+    pub fn send(&self, event: VkCleanupEvent) {
         self.send.send(event).unwrap();
     }
 }
@@ -105,22 +112,22 @@ impl VkCleanup {
 impl VkCleanupImpl {
     pub fn flush_and_die(&self) {
         println!("Flushing the cleanup thread");
-        self.send.send(VulkanCleanupEvent::SignalShutdown).unwrap();
+        self.send.send(VkCleanupEvent::SignalShutdown).unwrap();
         println!("Waiting for the cleanup thread to finish...");
         self.thread.lock().unwrap().take().unwrap().join().unwrap();
     }
 }
 
-fn vulkan_cleanup_worker(device: RenderDevice, recv: Receiver<VulkanCleanupEvent>) {
+fn vulkan_cleanup_worker(device: RenderDevice, recv: Receiver<VkCleanupEvent>) {
     println!("Vulkan cleanup thread started");
-    let mut cycle_buffer: VecDeque<Vec<VulkanCleanupEvent>> = VecDeque::new();
+    let mut cycle_buffer: VecDeque<Vec<VkCleanupEvent>> = VecDeque::new();
     for _ in 0..3 {
         cycle_buffer.push_back(Vec::new());
     }
 
     while let Ok(event) = recv.recv() {
         match event {
-            VulkanCleanupEvent::SignalShutdown => {
+            VkCleanupEvent::SignalShutdown => {
                 println!("Vulkan cleanup thread received shutdown signal, flushing the destruction queue...");
                 device.wait_idle();
                 for events in cycle_buffer.drain(..) {
@@ -130,7 +137,7 @@ fn vulkan_cleanup_worker(device: RenderDevice, recv: Receiver<VulkanCleanupEvent
                 }
                 break;
             }
-            VulkanCleanupEvent::SignalNextFrame => {
+            VkCleanupEvent::SignalNextFrame => {
                 let mut events = cycle_buffer.pop_front().unwrap();
                 if events.len() > 0 {
                     println!(

@@ -1,11 +1,24 @@
 use bevy::{prelude::*, asset::{AssetLoader, LoadedAsset}, reflect::TypeUuid};
 
-#[derive(TypeUuid, Default)]
+#[derive(TypeUuid, Default, Clone)]
 #[uuid = "ddd211b2-ba53-47d2-a40b-15fd29d757c6"]
-pub struct Gltf {
-    document: Option<gltf::Document>,
-    buffers: Vec<gltf::buffer::Data>,
-    images: Vec<gltf::image::Data>,
+pub struct GltfMesh {
+    pub document: Option<gltf::Document>,
+    pub buffers: Vec<gltf::buffer::Data>,
+    pub images: Vec<gltf::image::Data>,
+}
+
+impl GltfMesh {
+    pub fn single_mesh(&self) -> gltf::Mesh {
+        let document = self.document.as_ref().unwrap();
+        let scene = document.default_scene().unwrap();
+        let mut node = scene.nodes().next().unwrap();
+        while node.mesh().is_none() {
+            node = node.children().next().unwrap();
+        }
+
+        return node.mesh().unwrap();
+    }
 }
 
 #[derive(Default)]
@@ -20,7 +33,7 @@ impl AssetLoader for GltfLoader {
         Box::pin(async move {
             let (document, buffers, images) = gltf::import_slice(bytes)?;
 
-            let asset = Gltf {
+            let asset = GltfMesh {
                 document: Some(document),
                 buffers,
                 images,

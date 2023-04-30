@@ -6,8 +6,8 @@ use bevy::reflect::TypeUuid;
 use crate::composed_asset::{ComposedAsset, ComposedAssetAppExtension};
 use crate::render_device::RenderDevice;
 use crate::shader::{Shader, ShaderProvider};
-use crate::vulkan_assets::{VulkanAsset, AddVulkanAsset};
-use crate::vulkan_cleanup::{VkCleanup, VulkanCleanupEvent};
+use crate::vulkan_assets::{AddVulkanAsset, VulkanAsset};
+use crate::vulkan_cleanup::{VkCleanup, VkCleanupEvent};
 
 #[derive(Default, TypeUuid)]
 #[uuid = "f5b5b0f0-1b5f-4b0e-9c1f-1f1b0c0c0c0c"]
@@ -29,7 +29,10 @@ impl VulkanAsset for RasterizationPipeline {
     type PreparedAsset = VkRasterizationPipeline;
     type Param = SRes<Assets<Shader>>;
 
-    fn extract_asset(&self, shaders: &mut bevy::ecs::system::SystemParamItem<Self::Param>) -> Option<Self::ExtractedAsset> {
+    fn extract_asset(
+        &self,
+        shaders: &mut bevy::ecs::system::SystemParamItem<Self::Param>,
+    ) -> Option<Self::ExtractedAsset> {
         let vs_shader = shaders.get(&self.vs_shader)?;
         let fs_shader = shaders.get(&self.fs_shader)?;
         Some((vs_shader.clone(), fs_shader.clone()))
@@ -38,17 +41,15 @@ impl VulkanAsset for RasterizationPipeline {
     fn prepare_asset(device: &RenderDevice, asset: Self::ExtractedAsset) -> Self::PreparedAsset {
         let (vs_shader, fs_shader) = asset;
         println!("creating rasterization pipeline");
-        create_rast_pipeline(
-            &device,
-            &vs_shader,
-            &fs_shader,
-        )
+        create_rast_pipeline(&device, &vs_shader, &fs_shader)
     }
 
     fn destroy_asset(asset: VkRasterizationPipeline, cleanup: &VkCleanup) {
-        cleanup.send(VulkanCleanupEvent::Pipeline(asset.vk_pipeline));
-        cleanup.send(VulkanCleanupEvent::PipelineLayout(asset.pipeline_layout));
-        cleanup.send(VulkanCleanupEvent::DescriptorSetLayout(asset.descriptor_set_layout));
+        cleanup.send(VkCleanupEvent::Pipeline(asset.vk_pipeline));
+        cleanup.send(VkCleanupEvent::PipelineLayout(asset.pipeline_layout));
+        cleanup.send(VkCleanupEvent::DescriptorSetLayout(
+            asset.descriptor_set_layout,
+        ));
     }
 }
 
@@ -137,8 +138,12 @@ fn create_rast_pipeline(
     .unwrap()[0];
 
     unsafe {
-        device.device.destroy_shader_module(shader_stages[0].module, None);
-        device.device.destroy_shader_module(shader_stages[1].module, None);
+        device
+            .device
+            .destroy_shader_module(shader_stages[0].module, None);
+        device
+            .device
+            .destroy_shader_module(shader_stages[1].module, None);
     }
 
     VkRasterizationPipeline {
@@ -170,11 +175,14 @@ fn create_rast_descriptor_data(
     };
 
     let set = unsafe {
-        device.device.allocate_descriptor_sets(
-            &vk::DescriptorSetAllocateInfo::builder()
-                .descriptor_pool(device.descriptor_pool)
-                .set_layouts(std::slice::from_ref(&layout)),
-        ).unwrap()[0]
+        device
+            .device
+            .allocate_descriptor_sets(
+                &vk::DescriptorSetAllocateInfo::builder()
+                    .descriptor_pool(device.descriptor_pool)
+                    .set_layouts(std::slice::from_ref(&layout)),
+            )
+            .unwrap()[0]
     };
 
     (layout, set)

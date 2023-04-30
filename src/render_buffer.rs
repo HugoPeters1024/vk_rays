@@ -14,8 +14,19 @@ pub struct Buffer<T> {
 }
 
 pub struct BufferView<T> {
+    pub nr_elements: u64,
     ptr: *mut T,
     marker: std::marker::PhantomData<T>,
+}
+
+impl<T> BufferView<T> {
+    pub fn as_slice(&self) -> &[T] {
+        unsafe { std::slice::from_raw_parts(self.ptr, self.nr_elements as usize) }
+    }
+
+    pub fn as_slice_mut(&mut self) -> &mut [T] {
+        unsafe { std::slice::from_raw_parts_mut(self.ptr, self.nr_elements as usize) }
+    }
 }
 
 impl<'a, T> Index<usize> for BufferView<T> {
@@ -44,9 +55,16 @@ pub trait BufferProvider {
         location: MemoryLocation,
     ) -> Buffer<T>;
 
-    fn upload_buffer<T>(&self, host_buffer: &Buffer<T>, device_buffer: &Buffer<T>);
+    fn upload_buffer<T>(
+        &self,
+        cmd_buffer: vk::CommandBuffer,
+        host_buffer: &Buffer<T>,
+        device_buffer: &Buffer<T>,
+    );
 
     fn map_buffer<T>(&self, buffer: &mut Buffer<T>) -> BufferView<T>;
+
+    fn destroy_buffer<T>(&self, buffer: Buffer<T>);
 }
 
 impl BufferProvider for RenderDevice {
@@ -118,21 +136,24 @@ impl BufferProvider for RenderDevice {
         }
     }
 
-    fn upload_buffer<T>(&self, host_buffer: &Buffer<T>, device_buffer: &Buffer<T>) {
+    fn upload_buffer<T>(
+        &self,
+        cmd_buffer: vk::CommandBuffer,
+        host_buffer: &Buffer<T>,
+        device_buffer: &Buffer<T>,
+    ) {
         unsafe {
-            self.run_single_commands(&|cmd_buffer| {
-                let copy_region = vk::BufferCopy::builder()
-                    .src_offset(0)
-                    .dst_offset(0)
-                    .size(host_buffer.nr_elements * std::mem::size_of::<T>() as u64)
-                    .build();
-                self.device.cmd_copy_buffer(
-                    cmd_buffer,
-                    host_buffer.handle,
-                    device_buffer.handle,
-                    &[copy_region],
-                );
-            });
+            let copy_region = vk::BufferCopy::builder()
+                .src_offset(0)
+                .dst_offset(0)
+                .size(host_buffer.nr_elements * std::mem::size_of::<T>() as u64)
+                .build();
+            self.device.cmd_copy_buffer(
+                cmd_buffer,
+                host_buffer.handle,
+                device_buffer.handle,
+                &[copy_region],
+            );
         }
     }
 
@@ -149,8 +170,19 @@ impl BufferProvider for RenderDevice {
         drop(alloc);
 
         BufferView {
+            nr_elements: buffer.nr_elements,
             ptr,
             marker: std::marker::PhantomData,
+        }
+    }
+
+    fn destroy_buffer<T>(&self, buffer: Buffer<T>) {
+        let mut alloc_info = self.write_alloc();
+        if let Some(allocation) = alloc_info.buffer_to_allocation.remove(&buffer.handle) {
+            alloc_info.allocator.free(allocation).unwrap();
+        }
+        unsafe {
+            self.device.destroy_buffer(buffer.handle, None);
         }
     }
 }

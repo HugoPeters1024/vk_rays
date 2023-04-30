@@ -1,8 +1,9 @@
 use crate::rasterization_pipeline::{RasterizationPipeline, RasterizationPipelinePlugin};
 use crate::raytracing_pipeline::{RaytracingPipeline, RaytracingPlugin};
 use crate::render_image::Image;
+use crate::scene::ScenePlugin;
 use crate::vulkan_assets::{AddVulkanAsset, VulkanAssets, VkAssetCleanupPlaybook};
-use crate::vulkan_cleanup::{VkCleanup, VulkanCleanupEvent, VkCleanupPlugin};
+use crate::vulkan_cleanup::{VkCleanup, VkCleanupEvent, VkCleanupPlugin};
 use crate::{render_device::RenderDevice, swapchain::Swapchain};
 use crate::{swapchain, vk_utils};
 use ash::vk;
@@ -90,9 +91,12 @@ impl Plugin for RenderPlugin {
             .init_debug_asset_loader::<crate::shader::ShaderLoader>()
             .add_asset::<crate::render_image::Image>()
             .add_vulkan_asset::<crate::render_image::Image>()
-            .add_asset::<crate::gltf_assets::Gltf>()
+            .add_asset::<crate::gltf_assets::GltfMesh>()
+            .add_vulkan_asset::<crate::gltf_assets::GltfMesh>()
             .init_asset_loader::<crate::gltf_assets::GltfLoader>()
             .init_debug_asset_loader::<crate::gltf_assets::GltfLoader>();
+
+        app.add_plugin(ScenePlugin);
     }
 }
 
@@ -136,7 +140,7 @@ fn wait_for_frame_finish(
     // get the next image to render to
     swapchain.aquire_next_image(&device);
 
-    cleanup.send(VulkanCleanupEvent::SignalNextFrame);
+    cleanup.send(VkCleanupEvent::SignalNextFrame);
 }
 
 fn render(

@@ -1,4 +1,4 @@
-use crate::{render_device::RenderDevice, vulkan_cleanup::{VkCleanup, VulkanCleanupEvent}};
+use crate::{render_device::RenderDevice, vulkan_cleanup::{VkCleanup, VkCleanupEvent}};
 use ash::vk;
 use bevy::{
     ecs::system::SystemState,
@@ -173,9 +173,9 @@ impl Swapchain {
 
         // Cleanup old swapchain
         for view in self.views.iter() {
-            self.cleanup.send(VulkanCleanupEvent::ImageView(*view));
+            self.cleanup.send(VkCleanupEvent::ImageView(*view));
         }
-        self.cleanup.send(VulkanCleanupEvent::Swapchain(old_swapchain));
+        self.cleanup.send(VkCleanupEvent::Swapchain(old_swapchain));
 
         self.images = self
             .device

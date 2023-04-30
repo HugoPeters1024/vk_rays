@@ -6,7 +6,7 @@ use gpu_allocator::*;
 use crate::render_device::RenderDevice;
 use crate::vk_utils;
 use crate::vulkan_assets::VulkanAsset;
-use crate::vulkan_cleanup::{VkCleanup, VulkanCleanupEvent};
+use crate::vulkan_cleanup::{VkCleanup, VkCleanupEvent};
 
 #[derive(TypeUuid, Clone)]
 #[uuid = "f5b5b0f0-1b5f-4b0e-9c1f-1f1b0c0c0c2d"]
@@ -108,8 +108,8 @@ impl VulkanAsset for Image {
     }
 
     fn destroy_asset(asset: Self::PreparedAsset, cleanup: &VkCleanup) {
-        cleanup.send(VulkanCleanupEvent::ImageView(asset.view));
-        cleanup.send(VulkanCleanupEvent::Image(asset.handle));
+        cleanup.send(VkCleanupEvent::ImageView(asset.view));
+        cleanup.send(VkCleanupEvent::Image(asset.handle));
     }
 
 }
