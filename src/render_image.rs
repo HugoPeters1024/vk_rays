@@ -39,73 +39,80 @@ impl VulkanAsset for Image {
     }
 
     fn prepare_asset(device: &RenderDevice, asset: Self::ExtractedAsset) -> Self::PreparedAsset {
-        println!(
-            "Allocating an image of type {:?} and size {}x{}",
-            asset.format, asset.width, asset.height
-        );
-        let image_info = vk::ImageCreateInfo::builder()
-            .image_type(vk::ImageType::TYPE_2D)
-            .format(asset.format)
-            .extent(vk::Extent3D {
-                width: asset.width,
-                height: asset.height,
-                depth: 1,
-            })
-            .mip_levels(1)
-            .array_layers(1)
-            .samples(vk::SampleCountFlags::TYPE_1)
-            .tiling(vk::ImageTiling::OPTIMAL)
-            .usage(asset.usage)
-            .sharing_mode(vk::SharingMode::EXCLUSIVE)
-            .initial_layout(vk::ImageLayout::UNDEFINED);
-        let handle = unsafe { device.device.create_image(&image_info, None).unwrap() };
-
-        let requirements = unsafe { device.device.get_image_memory_requirements(handle) };
-
-        {
-            let mut alloc_impl = device.write_alloc();
-
-            let allocation = alloc_impl
-                .allocator
-                .allocate(&AllocationCreateDesc {
-                    name: "",
-                    requirements,
-                    location: MemoryLocation::GpuOnly,
-                    linear: false,
-                    allocation_scheme: AllocationScheme::GpuAllocatorManaged,
-                })
-                .unwrap();
-
-            unsafe {
-                device
-                    .device
-                    .bind_image_memory(handle, allocation.memory(), allocation.offset())
-                    .unwrap();
-            }
-
-            alloc_impl.image_to_allocation.insert(handle, allocation);
-        }
-
-        let view_info = crate::initializers::image_view_info(handle.clone(), asset.format);
-        let view = unsafe { device.device.create_image_view(&view_info, None).unwrap() };
+        let image = vk_image_from_asset(device, &asset);
 
         unsafe {
             device.run_single_commands(&|command_buffer| {
                 vk_utils::transition_image_layout(
                     device,
                     command_buffer,
-                    handle,
+                    image.handle,
                     vk::ImageLayout::UNDEFINED,
                     asset.initial_layout,
                 );
             });
         }
 
-        VkImage { handle, view }
+        image
     }
 
     fn destroy_asset(asset: Self::PreparedAsset, cleanup: &VkCleanup) {
         cleanup.send(VkCleanupEvent::ImageView(asset.view));
         cleanup.send(VkCleanupEvent::Image(asset.handle));
     }
+}
+
+pub fn vk_image_from_asset(device: &RenderDevice, asset: &Image) -> VkImage {
+    println!(
+        "Allocating an image of type {:?} and size {}x{}",
+        asset.format, asset.width, asset.height
+    );
+    let image_info = vk::ImageCreateInfo::builder()
+        .image_type(vk::ImageType::TYPE_2D)
+        .format(asset.format)
+        .extent(vk::Extent3D {
+            width: asset.width,
+            height: asset.height,
+            depth: 1,
+        })
+        .mip_levels(1)
+        .array_layers(1)
+        .samples(vk::SampleCountFlags::TYPE_1)
+        .tiling(vk::ImageTiling::OPTIMAL)
+        .usage(asset.usage)
+        .sharing_mode(vk::SharingMode::EXCLUSIVE)
+        .initial_layout(vk::ImageLayout::UNDEFINED);
+    let handle = unsafe { device.device.create_image(&image_info, None).unwrap() };
+
+    let requirements = unsafe { device.device.get_image_memory_requirements(handle) };
+
+    {
+        let mut alloc_impl = device.write_alloc();
+
+        let allocation = alloc_impl
+            .allocator
+            .allocate(&AllocationCreateDesc {
+                name: "",
+                requirements,
+                location: MemoryLocation::GpuOnly,
+                linear: false,
+                allocation_scheme: AllocationScheme::GpuAllocatorManaged,
+            })
+            .unwrap();
+
+        unsafe {
+            device
+                .device
+                .bind_image_memory(handle, allocation.memory(), allocation.offset())
+                .unwrap();
+        }
+
+        alloc_impl.image_to_allocation.insert(handle, allocation);
+    }
+
+    let view_info = crate::initializers::image_view_info(handle.clone(), asset.format);
+    let view = unsafe { device.device.create_image_view(&view_info, None).unwrap() };
+
+
+    VkImage { handle, view }
 }

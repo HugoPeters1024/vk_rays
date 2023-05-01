@@ -123,7 +123,7 @@ impl VkCleanupImpl {
 fn vulkan_cleanup_worker(device: RenderDevice, recv: Receiver<VkCleanupEvent>) {
     println!("Vulkan cleanup thread started");
     let mut cycle_buffer: VecDeque<Vec<VkCleanupEvent>> = VecDeque::new();
-    for _ in 0..3 {
+    for _ in 0..2 {
         cycle_buffer.push_back(Vec::new());
     }
 

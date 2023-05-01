@@ -23,7 +23,7 @@ use gltf_assets::GltfMesh;
 use rasterization_pipeline::RasterizationPipeline;
 use render_buffer::BufferProvider;
 use render_device::RenderDevice;
-use render_plugin::{RenderResources, UniformData};
+use render_plugin::{RenderConfig, UniformData};
 use shader::Shader;
 use vulkan_cleanup::{VkCleanup, VkCleanupEvent};
 
@@ -51,10 +51,6 @@ fn main() {
     }
 
     app.add_plugin(RenderPlugin).add_startup_system(startup);
-    app.world
-        .get_resource_mut::<VkAssetCleanupPlaybook>()
-        .unwrap()
-        .add_system(cleanup_render_resources);
 
     if args.dump_schedule {
         bevy_mod_debugdump::print_main_schedule(&mut app);
@@ -100,15 +96,8 @@ fn startup(
         ..default()
     });
 
-    commands.insert_resource(RenderResources {
+    commands.insert_resource(RenderConfig {
         rt_pipeline,
         quad_pipeline,
-        render_target: Handle::default(),
-        uniform_buffer: device
-            .create_host_buffer::<UniformData>(1, vk::BufferUsageFlags::UNIFORM_BUFFER),
     });
-}
-
-fn cleanup_render_resources(cleanup: Res<VkCleanup>, resources: Res<RenderResources>) {
-    cleanup.send(VkCleanupEvent::Buffer(resources.uniform_buffer.handle));
 }
