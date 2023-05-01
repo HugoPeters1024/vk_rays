@@ -3,8 +3,34 @@
 #extension GL_EXT_ray_tracing : enable
 #extension GL_EXT_nonuniform_qualifier : enable
 
+// definition of the uniform data
+layout (buffer_reference, std430, buffer_reference_align = 16) buffer UniformData {
+  mat4 inverse_view;
+  mat4 inverse_proj;
+};
+
 layout(set=0, binding=0, rgba32f) uniform image2D                  render_target;
+layout(set=0, binding=1)          uniform accelerationStructureEXT topLevelAS;
+
+layout(push_constant, std430) uniform Registers {
+  UniformData un;
+} regs;
+
+layout(location = 0) rayPayloadEXT vec3 hitValue;
 
 void main() {
-  imageStore(render_target, ivec2(gl_LaunchIDEXT.xy), vec4(0.2, 0.08 ,0.4,1.0));
+  const vec2 pixel_center = vec2(gl_LaunchIDEXT.xy) + vec2(0.5);
+  const vec2 inUV = pixel_center / vec2(gl_LaunchSizeEXT.xy);
+  vec2 d = inUV * 2.0 - 1.0;
+
+  vec4 origin = regs.un.inverse_view * vec4(0,0,0,1);
+	vec4 target = regs.un.inverse_proj * vec4(d.x, d.y, 1, 1) ;
+	vec4 direction = regs.un.inverse_view * vec4(normalize(target.xyz), 0);
+
+  float tmin = 0.01;
+  float tmax = 100.0;
+
+  hitValue = vec3(0.0, 0.0, 0.0);
+  traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xFF, 0, 0, 0, origin.xyz, tmin, direction.xyz, tmax, 0);
+  imageStore(render_target, ivec2(gl_LaunchIDEXT.xy), vec4(abs(hitValue), 1.0));
 }

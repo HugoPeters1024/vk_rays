@@ -157,12 +157,12 @@ fn create_raytracing_pipeline(
             .descriptor_count(1)
             .stage_flags(vk::ShaderStageFlags::RAYGEN_KHR)
             .build(),
-        //vk::DescriptorSetLayoutBinding::builder()
-        //    .binding(1)
-        //    .descriptor_type(vk::DescriptorType::ACCELERATION_STRUCTURE_KHR)
-        //    .descriptor_count(1)
-        //    .stage_flags(vk::ShaderStageFlags::RAYGEN_KHR)
-        //    .build(),
+        vk::DescriptorSetLayoutBinding::builder()
+            .binding(1)
+            .descriptor_type(vk::DescriptorType::ACCELERATION_STRUCTURE_KHR)
+            .descriptor_count(1)
+            .stage_flags(vk::ShaderStageFlags::RAYGEN_KHR)
+            .build(),
     ];
 
     let descriptor_set_layout_info =

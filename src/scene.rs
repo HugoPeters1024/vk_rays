@@ -6,26 +6,38 @@ use crate::{
     gltf_assets::GltfMesh,
     render_buffer::{Buffer, BufferProvider},
     render_device::RenderDevice,
-    render_plugin::RenderSchedule,
-    vulkan_assets::VulkanAssets,
+    vulkan_assets::{VkAssetCleanupPlaybook, VulkanAssets},
+    vulkan_cleanup::{VkCleanup, VkCleanupEvent},
 };
 
 #[derive(Resource)]
-pub struct Scene {
-    tlas: AccelerationStructure,
+pub enum Scene {
+    Empty,
+    Ready(AccelerationStructure),
+}
+
+impl Default for Scene {
+    fn default() -> Self {
+        Scene::Empty
+    }
 }
 
 pub struct ScenePlugin;
 
 impl Plugin for ScenePlugin {
     fn build(&self, app: &mut App) {
-        app.edit_schedule(RenderSchedule, |s| {
-            s.add_system(update_scene);
-        });
+        app.world.init_resource::<Scene>();
+        app.add_system(update_scene);
+
+        app.world
+            .get_resource_mut::<VkAssetCleanupPlaybook>()
+            .unwrap()
+            .add_system(destroy_scene);
     }
 }
 
 fn update_scene(
+    cleanup: Res<VkCleanup>,
     mut should_rebuild: Local<bool>,
     mut commands: Commands,
     device: Res<RenderDevice>,
@@ -176,11 +188,19 @@ fn update_scene(
             )
     };
 
-    commands.insert_resource(Scene {
-        tlas: AccelerationStructure {
-            handle: acceleration_structure,
-            buffer: acceleration_structure_buffer,
-            address,
-        },
-    });
+    cleanup.send(VkCleanupEvent::Buffer(scratch_buffer.handle));
+    cleanup.send(VkCleanupEvent::Buffer(instance_buffer.handle));
+
+    commands.insert_resource(Scene::Ready(AccelerationStructure {
+        handle: acceleration_structure,
+        buffer: acceleration_structure_buffer,
+        address,
+    }));
+}
+
+fn destroy_scene(scene: Res<Scene>, cleanup: Res<VkCleanup>) {
+    if let Scene::Ready(tlas) = scene.into_inner() {
+        cleanup.send(VkCleanupEvent::AccelerationStructure(tlas.handle));
+        cleanup.send(VkCleanupEvent::Buffer(tlas.buffer.handle));
+    }
 }

@@ -37,14 +37,16 @@ impl AssetLoader for ShaderLoader {
             println!("Compiling shader: {:?}", load_context.path());
             let ext = load_context.path().extension().unwrap().to_str().unwrap();
 
-            let kind = match ext {
-                "vert" => shaderc::ShaderKind::Vertex,
-                "frag" => shaderc::ShaderKind::Fragment,
-                "comp" => shaderc::ShaderKind::Compute,
-                "rgen" => shaderc::ShaderKind::RayGeneration,
-                "rchit" => shaderc::ShaderKind::ClosestHit,
-                "rmiss" => shaderc::ShaderKind::Miss,
-                _ => panic!("Unsupported shader type: {}", ext),
+            let Some(kind) = (match ext {
+                "vert" => Some(shaderc::ShaderKind::Vertex),
+                "frag" => Some(shaderc::ShaderKind::Fragment),
+                "comp" => Some(shaderc::ShaderKind::Compute),
+                "rgen" => Some(shaderc::ShaderKind::RayGeneration),
+                "rchit" => Some(shaderc::ShaderKind::ClosestHit),
+                "rmiss" => Some(shaderc::ShaderKind::Miss),
+                _ => None, 
+            }) else {
+                return Err(bevy::asset::Error::new(shaderc::Error::InvalidStage(format!("Unknown shader extension: {}", ext))));
             };
 
             let mut options = shaderc::CompileOptions::new().unwrap();
@@ -59,11 +61,9 @@ impl AssetLoader for ShaderLoader {
                 Some(&options),
             );
 
-            let binary = match binary_result {
-                Ok(binary) => binary,
-                Err(e) => {
-                    panic!("Shader compilation error: {}", e);
-                }
+            let Ok(binary) = binary_result else {
+                let e = binary_result.err().unwrap();
+                return Err(bevy::asset::Error::new(e));
             };
 
             let shader = Shader {

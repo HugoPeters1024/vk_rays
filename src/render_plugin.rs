@@ -1,8 +1,11 @@
+use std::f32::consts::PI;
+
 use crate::rasterization_pipeline::{RasterizationPipeline, RasterizationPipelinePlugin};
-use crate::raytracing_pipeline::{RaytracingPipeline, RaytracingPlugin};
+use crate::raytracing_pipeline::{RaytracerRegisters, RaytracingPipeline, RaytracingPlugin};
+use crate::render_buffer::{Buffer, BufferProvider};
 use crate::render_image::Image;
-use crate::scene::ScenePlugin;
-use crate::vulkan_assets::{AddVulkanAsset, VulkanAssets, VkAssetCleanupPlaybook};
+use crate::scene::{Scene, ScenePlugin};
+use crate::vulkan_assets::{AddVulkanAsset, VkAssetCleanupPlaybook, VulkanAssets};
 use crate::vulkan_cleanup::{VkCleanup, VkCleanupEvent, VkCleanupPlugin};
 use crate::{render_device::RenderDevice, swapchain::Swapchain};
 use crate::{swapchain, vk_utils};
@@ -48,11 +51,17 @@ impl RenderSet {
 #[allow(unused_variables)]
 fn flush_ecs(world: &mut World) {}
 
-#[derive(Resource, Default)]
+#[derive(Resource)]
 pub struct RenderResources {
     pub rt_pipeline: Handle<RaytracingPipeline>,
     pub quad_pipeline: Handle<RasterizationPipeline>,
     pub render_target: Handle<Image>,
+    pub uniform_buffer: Buffer<UniformData>,
+}
+
+pub struct UniformData {
+    inverse_view: Mat4,
+    inverse_proj: Mat4,
 }
 
 pub struct RenderPlugin;
@@ -145,8 +154,10 @@ fn wait_for_frame_finish(
 
 fn render(
     device: Res<RenderDevice>,
+    scene: Res<Scene>,
+    time: Res<Time>,
     mut swapchain: Query<&mut Swapchain>,
-    render_resources: Res<RenderResources>,
+    mut render_resources: ResMut<RenderResources>,
     rt_pipelines: Res<VulkanAssets<RaytracingPipeline>>,
     rast_pipelines: Res<VulkanAssets<RasterizationPipeline>>,
     vk_images: Res<VulkanAssets<Image>>,
@@ -183,48 +194,83 @@ fn render(
 
         if let Some(render_target) = vk_images.get(&render_resources.render_target) {
             if let Some(compiled) = rt_pipelines.get(&render_resources.rt_pipeline) {
-                // update the descriptor set
-                let render_target_image_binding = vk::DescriptorImageInfo::builder()
-                    .image_layout(vk::ImageLayout::GENERAL)
-                    .image_view(render_target.view)
-                    .build();
+                if let Scene::Ready(tlas) = scene.into_inner() {
+                    // update the descriptor set
+                    let render_target_image_binding = vk::DescriptorImageInfo::builder()
+                        .image_layout(vk::ImageLayout::GENERAL)
+                        .image_view(render_target.view)
+                        .build();
 
-                let descriptor_write = vk::WriteDescriptorSet::builder()
-                    .dst_set(compiled.descriptor_set)
-                    .dst_binding(0)
-                    .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
-                    .image_info(std::slice::from_ref(&render_target_image_binding))
-                    .build();
+                    let write_render_target = vk::WriteDescriptorSet::builder()
+                        .dst_set(compiled.descriptor_set)
+                        .dst_binding(0)
+                        .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
+                        .image_info(std::slice::from_ref(&render_target_image_binding))
+                        .build();
 
-                device
-                    .device
-                    .update_descriptor_sets(std::slice::from_ref(&descriptor_write), &[]);
+                    let mut p_acceleration_structure_write =
+                        vk::WriteDescriptorSetAccelerationStructureKHR::builder()
+                            .acceleration_structures(std::slice::from_ref(&tlas.handle))
+                            .build();
 
-                device.device.cmd_bind_pipeline(
-                    cmd_buffer,
-                    vk::PipelineBindPoint::RAY_TRACING_KHR,
-                    compiled.vk_pipeline,
-                );
+                    let mut write_acceleration_structure = vk::WriteDescriptorSet::builder()
+                        .dst_set(compiled.descriptor_set)
+                        .dst_binding(1)
+                        .descriptor_type(vk::DescriptorType::ACCELERATION_STRUCTURE_KHR)
+                        .push_next(&mut p_acceleration_structure_write)
+                        .build();
+                    write_acceleration_structure.descriptor_count = 1;
 
-                device.device.cmd_bind_descriptor_sets(
-                    cmd_buffer,
-                    vk::PipelineBindPoint::RAY_TRACING_KHR,
-                    compiled.pipeline_layout,
-                    0,
-                    std::slice::from_ref(&compiled.descriptor_set),
-                    &[],
-                );
+                    device.device.update_descriptor_sets(
+                        &[write_render_target, write_acceleration_structure],
+                        &[],
+                    );
 
-                device.exts.rt_pipeline.cmd_trace_rays(
-                    cmd_buffer,
-                    &compiled.shader_binding_table.get_sbt_raygen(),
-                    &compiled.shader_binding_table.get_sbt_miss(),
-                    &compiled.shader_binding_table.get_sbt_hit(),
-                    &vk::StridedDeviceAddressRegionKHR::default(),
-                    swapchain.width,
-                    swapchain.height,
-                    1,
-                )
+                    device.device.cmd_bind_pipeline(
+                        cmd_buffer,
+                        vk::PipelineBindPoint::RAY_TRACING_KHR,
+                        compiled.vk_pipeline,
+                    );
+
+                    {
+                        let mut uniform_view = device.map_buffer(&mut render_resources.uniform_buffer);
+                        let translation = Mat4::from_translation(Vec3::new(0.0, 0.0, -3.0));
+                        let rotation = Mat4::from_rotation_y(time.elapsed_seconds());
+                        uniform_view[0].inverse_view = (translation * rotation).inverse();
+                        uniform_view[0].inverse_proj = Mat4::perspective_rh(PI/2.0, swapchain.width as f32 / swapchain.height as f32, 0.001, 100.0).inverse();
+                    }
+
+                    let push_constants = RaytracerRegisters {
+                        uniform_buffer_address: render_resources.uniform_buffer.address,
+                    };
+                    device.device.cmd_push_constants(
+                        cmd_buffer,
+                        compiled.pipeline_layout,
+                        vk::ShaderStageFlags::RAYGEN_KHR,
+                        0,
+                        bytemuck::bytes_of(&push_constants),
+                    );
+
+                    device.device.cmd_bind_descriptor_sets(
+                        cmd_buffer,
+                        vk::PipelineBindPoint::RAY_TRACING_KHR,
+                        compiled.pipeline_layout,
+                        0,
+                        std::slice::from_ref(&compiled.descriptor_set),
+                        &[],
+                    );
+
+                    device.exts.rt_pipeline.cmd_trace_rays(
+                        cmd_buffer,
+                        &compiled.shader_binding_table.get_sbt_raygen(),
+                        &compiled.shader_binding_table.get_sbt_miss(),
+                        &compiled.shader_binding_table.get_sbt_hit(),
+                        &vk::StridedDeviceAddressRegionKHR::default(),
+                        swapchain.width,
+                        swapchain.height,
+                        1,
+                    )
+                }
             }
 
             // make render target available for sampling

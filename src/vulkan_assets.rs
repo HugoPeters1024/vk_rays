@@ -30,6 +30,11 @@ impl VkAssetCleanupPlaybook {
     pub fn run(&mut self, world: &mut World) {
         self.0.set_executor_kind(ExecutorKind::SingleThreaded).run(world);
     }
+
+    pub fn add_system<M>(&mut self, system: impl IntoSystemConfig<M>) -> &mut Self {
+        self.0.add_system(system);
+        self
+    }
 }
 
 #[derive(Resource)]
