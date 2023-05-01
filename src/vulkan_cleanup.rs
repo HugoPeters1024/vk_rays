@@ -1,7 +1,10 @@
 use ash::vk;
 use bevy::prelude::*;
 use crossbeam_channel::{Receiver, Sender};
-use std::{collections::VecDeque, sync::{Arc, Mutex}};
+use std::{
+    collections::VecDeque,
+    sync::{Arc, Mutex},
+};
 
 use crate::render_device::RenderDevice;
 
@@ -64,7 +67,7 @@ impl VkCleanupEvent {
             },
             VkCleanupEvent::ShaderModule(shader_module) => unsafe {
                 device.device.destroy_shader_module(shader_module, None);
-            },   
+            },
             VkCleanupEvent::Swapchain(swapchain) => unsafe {
                 device.exts.swapchain.destroy_swapchain(swapchain, None);
             },
@@ -107,7 +110,6 @@ impl VkCleanup {
         self.send.send(event).unwrap();
     }
 }
-
 
 impl VkCleanupImpl {
     pub fn flush_and_die(&self) {

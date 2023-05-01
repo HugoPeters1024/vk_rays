@@ -25,4 +25,3 @@ pub fn transition_image_layout(
             .cmd_pipeline_barrier2(cmd_buffer, &barrier_info);
     }
 }
-

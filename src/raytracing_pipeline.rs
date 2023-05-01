@@ -9,7 +9,7 @@ use crate::render_buffer::{Buffer, BufferProvider};
 use crate::render_device::RenderDevice;
 use crate::shader::{Shader, ShaderProvider};
 use crate::vk_utils;
-use crate::vulkan_assets::{VulkanAsset, AddVulkanAsset};
+use crate::vulkan_assets::{AddVulkanAsset, VulkanAsset};
 use crate::vulkan_cleanup::{VkCleanup, VkCleanupEvent};
 
 #[repr(C)]
@@ -38,23 +38,25 @@ impl VulkanAsset for RaytracingPipeline {
     type PreparedAsset = VkRaytracingPipeline;
     type Param = SRes<Assets<Shader>>;
 
-    fn extract_asset(&self, shaders: &mut bevy::ecs::system::SystemParamItem<Self::Param>) -> Option<Self::ExtractedAsset> {
+    fn extract_asset(
+        &self,
+        shaders: &mut bevy::ecs::system::SystemParamItem<Self::Param>,
+    ) -> Option<Self::ExtractedAsset> {
         let raygen_shader = shaders.get(&self.raygen_shader)?;
         let hit_shader = shaders.get(&self.hit_shader)?;
         let miss_shader = shaders.get(&self.miss_shader)?;
-        Some((raygen_shader.clone(), hit_shader.clone(), miss_shader.clone()))
+        Some((
+            raygen_shader.clone(),
+            hit_shader.clone(),
+            miss_shader.clone(),
+        ))
     }
 
     fn prepare_asset(device: &RenderDevice, asset: Self::ExtractedAsset) -> Self::PreparedAsset {
         let (raygen_shader, hit_shader, miss_shader) = asset;
         println!("creating RT pipeline");
         let (descriptor_set_layout, pipeline_layout, vk_pipeline, nr_shader_groups) =
-            create_raytracing_pipeline(
-                &device,
-                &raygen_shader,
-                &hit_shader,
-                &miss_shader,
-            );
+            create_raytracing_pipeline(&device, &raygen_shader, &hit_shader, &miss_shader);
         let shader_binding_table =
             create_shader_binding_table(&device, vk_pipeline, nr_shader_groups as u32);
 
@@ -82,10 +84,18 @@ impl VulkanAsset for RaytracingPipeline {
     fn destroy_asset(asset: Self::PreparedAsset, cleanup: &VkCleanup) {
         cleanup.send(VkCleanupEvent::Pipeline(asset.vk_pipeline));
         cleanup.send(VkCleanupEvent::PipelineLayout(asset.pipeline_layout));
-        cleanup.send(VkCleanupEvent::DescriptorSetLayout(asset.descriptor_set_layout));
-        cleanup.send(VkCleanupEvent::Buffer(asset.shader_binding_table.raygen.handle));
-        cleanup.send(VkCleanupEvent::Buffer(asset.shader_binding_table.miss.handle));
-        cleanup.send(VkCleanupEvent::Buffer(asset.shader_binding_table.hit.handle));
+        cleanup.send(VkCleanupEvent::DescriptorSetLayout(
+            asset.descriptor_set_layout,
+        ));
+        cleanup.send(VkCleanupEvent::Buffer(
+            asset.shader_binding_table.raygen.handle,
+        ));
+        cleanup.send(VkCleanupEvent::Buffer(
+            asset.shader_binding_table.miss.handle,
+        ));
+        cleanup.send(VkCleanupEvent::Buffer(
+            asset.shader_binding_table.hit.handle,
+        ));
     }
 }
 

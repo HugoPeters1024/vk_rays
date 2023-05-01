@@ -28,7 +28,9 @@ pub struct VkAssetCleanupPlaybook(Schedule);
 
 impl VkAssetCleanupPlaybook {
     pub fn run(&mut self, world: &mut World) {
-        self.0.set_executor_kind(ExecutorKind::SingleThreaded).run(world);
+        self.0
+            .set_executor_kind(ExecutorKind::SingleThreaded)
+            .run(world);
     }
 
     pub fn add_system<M>(&mut self, system: impl IntoSystemConfig<M>) -> &mut Self {
@@ -63,7 +65,10 @@ impl<T: VulkanAsset> Plugin for VulkanAssetPlugin<T> {
 
         app.world.init_resource::<VkAssetCleanupPlaybook>();
 
-        let mut playbook = app.world.get_resource_mut::<VkAssetCleanupPlaybook>().unwrap();
+        let mut playbook = app
+            .world
+            .get_resource_mut::<VkAssetCleanupPlaybook>()
+            .unwrap();
         playbook.0.add_system(destroy_vulkan_asset::<T>);
 
         app.add_asset::<T>();
@@ -135,7 +140,10 @@ fn extract_vulkan_asset<T: VulkanAsset>(
     }
 }
 
-fn publish_vulkan_asset<T: VulkanAsset>(mut vk_assets: ResMut<VulkanAssets<T>>, cleanup: Res<VkCleanup>) {
+fn publish_vulkan_asset<T: VulkanAsset>(
+    mut vk_assets: ResMut<VulkanAssets<T>>,
+    cleanup: Res<VkCleanup>,
+) {
     while let Ok((handle_id, prepared_asset)) = vk_assets.recv_prepared.try_recv() {
         println!(
             "{} asset received, inserting into world",
@@ -175,8 +183,14 @@ fn prepare_asset<T: VulkanAsset>(
     );
 }
 
-fn destroy_vulkan_asset<T: VulkanAsset>(mut vk_assets: ResMut<VulkanAssets<T>>, cleanup: Res<VkCleanup>) {
-    println!("Destroying all vulkan assets of type {}", std::any::type_name::<T>());
+fn destroy_vulkan_asset<T: VulkanAsset>(
+    mut vk_assets: ResMut<VulkanAssets<T>>,
+    cleanup: Res<VkCleanup>,
+) {
+    println!(
+        "Destroying all vulkan assets of type {}",
+        std::any::type_name::<T>()
+    );
     for (_, asset) in vk_assets.lookup.drain() {
         T::destroy_asset(asset, &cleanup);
     }

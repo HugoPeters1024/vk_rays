@@ -1,4 +1,7 @@
-use crate::{render_device::RenderDevice, vulkan_cleanup::{VkCleanup, VkCleanupEvent}};
+use crate::{
+    render_device::RenderDevice,
+    vulkan_cleanup::{VkCleanup, VkCleanupEvent},
+};
 use ash::vk;
 use bevy::{
     ecs::system::SystemState,
@@ -18,7 +21,12 @@ impl Plugin for SwapchainPlugin {
 
         let render_device = app.world.get_resource::<RenderDevice>().unwrap();
         let cleanup = app.world.get_resource::<VkCleanup>().unwrap();
-        let swapchain = Swapchain::new(render_device.clone(), cleanup.clone(), whandles, primary_window);
+        let swapchain = Swapchain::new(
+            render_device.clone(),
+            cleanup.clone(),
+            whandles,
+            primary_window,
+        );
 
         app.world.entity_mut(primary_window_e).insert(swapchain);
     }
@@ -41,7 +49,12 @@ pub struct Swapchain {
 }
 
 impl Swapchain {
-    pub fn new(device: RenderDevice, cleanup: VkCleanup, whandles: &RawHandleWrapper, window: &Window) -> Self {
+    pub fn new(
+        device: RenderDevice,
+        cleanup: VkCleanup,
+        whandles: &RawHandleWrapper,
+        window: &Window,
+    ) -> Self {
         unsafe {
             let surface = device.create_surface(whandles);
             let semaphore_info = vk::SemaphoreCreateInfo::builder();
@@ -183,7 +196,6 @@ impl Swapchain {
             .swapchain
             .get_swapchain_images(self.handle)
             .unwrap();
-
 
         self.views = self
             .images

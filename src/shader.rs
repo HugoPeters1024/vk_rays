@@ -1,4 +1,4 @@
-use std::{io::Cursor, borrow::Cow};
+use std::{borrow::Cow, io::Cursor};
 
 use crate::render_device::*;
 use ash::{util::read_spv, vk};
@@ -44,7 +44,7 @@ impl AssetLoader for ShaderLoader {
                 "rgen" => Some(shaderc::ShaderKind::RayGeneration),
                 "rchit" => Some(shaderc::ShaderKind::ClosestHit),
                 "rmiss" => Some(shaderc::ShaderKind::Miss),
-                _ => None, 
+                _ => None,
             }) else {
                 return Err(bevy::asset::Error::new(shaderc::Error::InvalidStage(format!("Unknown shader extension: {}", ext))));
             };

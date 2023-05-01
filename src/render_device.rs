@@ -458,8 +458,7 @@ impl Drop for RenderDeviceImpl {
         unsafe {
             {
                 let asset_command_pool = self.asset_command_pool.lock().unwrap();
-                self.device
-                    .destroy_command_pool(*asset_command_pool, None);
+                self.device.destroy_command_pool(*asset_command_pool, None);
             }
             self.device.destroy_fence(self.single_time_fence, None);
             self.device.destroy_sampler(self.nearest_sampler, None);

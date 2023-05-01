@@ -1,4 +1,8 @@
-use bevy::{prelude::*, asset::{AssetLoader, LoadedAsset}, reflect::TypeUuid};
+use bevy::{
+    asset::{AssetLoader, LoadedAsset},
+    prelude::*,
+    reflect::TypeUuid,
+};
 
 #[derive(TypeUuid, Default, Clone)]
 #[uuid = "ddd211b2-ba53-47d2-a40b-15fd29d757c6"]
@@ -39,8 +43,16 @@ impl AssetLoader for GltfLoader {
                 images,
             };
 
-            println!("GLTF {} has {} chunks of buffer data", load_context.path().display(), asset.buffers.len());
-            println!("GLTF {} has {} chunks of image data", load_context.path().display(), asset.images.len());
+            println!(
+                "GLTF {} has {} chunks of buffer data",
+                load_context.path().display(),
+                asset.buffers.len()
+            );
+            println!(
+                "GLTF {} has {} chunks of image data",
+                load_context.path().display(),
+                asset.images.len()
+            );
 
             load_context.set_default_asset(LoadedAsset::new(asset));
             Ok(())

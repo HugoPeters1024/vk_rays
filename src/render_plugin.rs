@@ -233,11 +233,18 @@ fn render(
                     );
 
                     {
-                        let mut uniform_view = device.map_buffer(&mut render_resources.uniform_buffer);
+                        let mut uniform_view =
+                            device.map_buffer(&mut render_resources.uniform_buffer);
                         let translation = Mat4::from_translation(Vec3::new(0.0, 0.0, -3.0));
                         let rotation = Mat4::from_rotation_y(time.elapsed_seconds());
                         uniform_view[0].inverse_view = (translation * rotation).inverse();
-                        uniform_view[0].inverse_proj = Mat4::perspective_rh(PI/2.0, swapchain.width as f32 / swapchain.height as f32, 0.001, 100.0).inverse();
+                        uniform_view[0].inverse_proj = Mat4::perspective_rh(
+                            PI / 2.0,
+                            swapchain.width as f32 / swapchain.height as f32,
+                            0.001,
+                            100.0,
+                        )
+                        .inverse();
                     }
 
                     let push_constants = RaytracerRegisters {

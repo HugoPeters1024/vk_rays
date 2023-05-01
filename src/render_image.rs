@@ -76,9 +76,9 @@ impl VulkanAsset for Image {
                 })
                 .unwrap();
 
-
             unsafe {
-                device.device
+                device
+                    .device
                     .bind_image_memory(handle, allocation.memory(), allocation.offset())
                     .unwrap();
             }
@@ -101,15 +101,11 @@ impl VulkanAsset for Image {
             });
         }
 
-        VkImage {
-            handle,
-            view,
-        }
+        VkImage { handle, view }
     }
 
     fn destroy_asset(asset: Self::PreparedAsset, cleanup: &VkCleanup) {
         cleanup.send(VkCleanupEvent::ImageView(asset.view));
         cleanup.send(VkCleanupEvent::Image(asset.handle));
     }
-
 }

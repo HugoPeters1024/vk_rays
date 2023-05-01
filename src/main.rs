@@ -1,4 +1,6 @@
+mod acceleration_structure;
 mod composed_asset;
+mod gltf_assets;
 mod initializers;
 mod rasterization_pipeline;
 mod raytracing_pipeline;
@@ -6,14 +8,12 @@ mod render_buffer;
 mod render_device;
 mod render_image;
 mod render_plugin;
+mod scene;
 mod shader;
 mod swapchain;
 mod vk_utils;
 mod vulkan_assets;
-mod gltf_assets;
-mod acceleration_structure;
 mod vulkan_cleanup;
-mod scene;
 
 use ash::vk;
 use bevy::log::LogPlugin;
@@ -25,7 +25,7 @@ use render_buffer::BufferProvider;
 use render_device::RenderDevice;
 use render_plugin::{RenderResources, UniformData};
 use shader::Shader;
-use vulkan_cleanup::{VkCleanupEvent, VkCleanup};
+use vulkan_cleanup::{VkCleanup, VkCleanupEvent};
 
 use crate::raytracing_pipeline::RaytracingPipeline;
 use crate::render_plugin::RenderPlugin;
@@ -51,7 +51,10 @@ fn main() {
     }
 
     app.add_plugin(RenderPlugin).add_startup_system(startup);
-    app.world.get_resource_mut::<VkAssetCleanupPlaybook>().unwrap().add_system(cleanup_render_resources);
+    app.world
+        .get_resource_mut::<VkAssetCleanupPlaybook>()
+        .unwrap()
+        .add_system(cleanup_render_resources);
 
     if args.dump_schedule {
         bevy_mod_debugdump::print_main_schedule(&mut app);
@@ -74,8 +77,7 @@ fn startup(
     mut rt_pipelines: ResMut<Assets<RaytracingPipeline>>,
     mut rast_pipelines: ResMut<Assets<RasterizationPipeline>>,
 ) {
-
-    let box_mesh : Handle<GltfMesh> = assets.load("models/box.glb");
+    let box_mesh: Handle<GltfMesh> = assets.load("models/box.glb");
     commands.spawn(box_mesh);
 
     let raygen_shader: Handle<Shader> = assets.load("shaders/raygen.rgen");
@@ -102,7 +104,8 @@ fn startup(
         rt_pipeline,
         quad_pipeline,
         render_target: Handle::default(),
-        uniform_buffer: device.create_host_buffer::<UniformData>(1, vk::BufferUsageFlags::UNIFORM_BUFFER),
+        uniform_buffer: device
+            .create_host_buffer::<UniformData>(1, vk::BufferUsageFlags::UNIFORM_BUFFER),
     });
 }
 
