@@ -13,20 +13,14 @@ pub struct SwapchainPlugin;
 
 impl Plugin for SwapchainPlugin {
     fn build(&self, app: &mut App) {
-        let mut system_state: SystemState<
-            Query<(Entity, &Window, &RawHandleWrapper), With<PrimaryWindow>>,
-        > = SystemState::new(&mut app.world);
+        let mut system_state: SystemState<Query<(Entity, &Window, &RawHandleWrapper), With<PrimaryWindow>>> =
+            SystemState::new(&mut app.world);
         let query = system_state.get(&app.world);
         let (primary_window_e, primary_window, whandles) = query.get_single().unwrap();
 
         let render_device = app.world.get_resource::<RenderDevice>().unwrap();
         let cleanup = app.world.get_resource::<VkCleanup>().unwrap();
-        let swapchain = Swapchain::new(
-            render_device.clone(),
-            cleanup.clone(),
-            whandles,
-            primary_window,
-        );
+        let swapchain = Swapchain::new(render_device.clone(), cleanup.clone(), whandles, primary_window);
 
         app.world.entity_mut(primary_window_e).insert(swapchain);
     }
@@ -49,23 +43,12 @@ pub struct Swapchain {
 }
 
 impl Swapchain {
-    pub fn new(
-        device: RenderDevice,
-        cleanup: VkCleanup,
-        whandles: &RawHandleWrapper,
-        window: &Window,
-    ) -> Self {
+    pub fn new(device: RenderDevice, cleanup: VkCleanup, whandles: &RawHandleWrapper, window: &Window) -> Self {
         unsafe {
             let surface = device.create_surface(whandles);
             let semaphore_info = vk::SemaphoreCreateInfo::builder();
-            let image_ready_sem = device
-                .device
-                .create_semaphore(&semaphore_info, None)
-                .unwrap();
-            let render_finished_sem = device
-                .device
-                .create_semaphore(&semaphore_info, None)
-                .unwrap();
+            let image_ready_sem = device.device.create_semaphore(&semaphore_info, None).unwrap();
+            let render_finished_sem = device.device.create_semaphore(&semaphore_info, None).unwrap();
 
             let fence_info = vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::SIGNALED);
             let fence = device.device.create_fence(&fence_info, None).unwrap();
@@ -91,20 +74,15 @@ impl Swapchain {
     }
 
     pub fn current_framebuffer(&self) -> (vk::Image, vk::ImageView) {
-        (
-            self.images[self.current_image_idx],
-            self.views[self.current_image_idx],
-        )
+        (self.images[self.current_image_idx], self.views[self.current_image_idx])
     }
 
     pub fn aquire_next_image(&mut self, device: &RenderDevice) {
         let result = unsafe {
-            device.exts.swapchain.acquire_next_image(
-                self.handle,
-                u64::MAX,
-                self.image_ready_sem,
-                vk::Fence::null(),
-            )
+            device
+                .exts
+                .swapchain
+                .acquire_next_image(self.handle, u64::MAX, self.image_ready_sem, vk::Fence::null())
         }
         .unwrap();
         self.current_image_idx = result.0 as usize;
@@ -190,23 +168,14 @@ impl Swapchain {
         }
         self.cleanup.send(VkCleanupEvent::Swapchain(old_swapchain));
 
-        self.images = self
-            .device
-            .exts
-            .swapchain
-            .get_swapchain_images(self.handle)
-            .unwrap();
+        self.images = self.device.exts.swapchain.get_swapchain_images(self.handle).unwrap();
 
         self.views = self
             .images
             .iter()
             .map(|image| {
-                let view_info =
-                    crate::initializers::image_view_info(image.clone(), surface_format.format);
-                self.device
-                    .device
-                    .create_image_view(&view_info, None)
-                    .unwrap()
+                let view_info = crate::initializers::image_view_info(image.clone(), surface_format.format);
+                self.device.device.create_image_view(&view_info, None).unwrap()
             })
             .collect();
 
@@ -226,10 +195,7 @@ impl Drop for Swapchain {
             for view in self.views.iter() {
                 dv.destroy_image_view(*view, None);
             }
-            self.device
-                .exts
-                .swapchain
-                .destroy_swapchain(self.handle, None);
+            self.device.exts.swapchain.destroy_swapchain(self.handle, None);
 
             self.device.exts.surface.destroy_surface(self.surface, None);
         }

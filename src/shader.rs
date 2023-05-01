@@ -82,19 +82,11 @@ impl AssetLoader for ShaderLoader {
 }
 
 pub trait ShaderProvider {
-    fn load_shader(
-        &self,
-        shader: &Shader,
-        stage: vk::ShaderStageFlags,
-    ) -> vk::PipelineShaderStageCreateInfo;
+    fn load_shader(&self, shader: &Shader, stage: vk::ShaderStageFlags) -> vk::PipelineShaderStageCreateInfo;
 }
 
 impl ShaderProvider for RenderDevice {
-    fn load_shader(
-        &self,
-        shader: &Shader,
-        stage: vk::ShaderStageFlags,
-    ) -> vk::PipelineShaderStageCreateInfo {
+    fn load_shader(&self, shader: &Shader, stage: vk::ShaderStageFlags) -> vk::PipelineShaderStageCreateInfo {
         let code = read_spv(&mut Cursor::new(&shader.spirv)).unwrap();
         let shader_module = unsafe {
             self.device

@@ -113,6 +113,5 @@ pub fn vk_image_from_asset(device: &RenderDevice, asset: &Image) -> VkImage {
     let view_info = crate::initializers::image_view_info(handle.clone(), asset.format);
     let view = unsafe { device.device.create_image_view(&view_info, None).unwrap() };
 
-
     VkImage { handle, view }
 }

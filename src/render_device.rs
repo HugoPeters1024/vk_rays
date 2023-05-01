@@ -70,22 +70,16 @@ impl RenderDeviceImpl {
             let mut layer_names: Vec<&CStr> = Vec::new();
 
             #[cfg(debug_assertions)]
-            layer_names.push(CStr::from_bytes_with_nul_unchecked(
-                b"VK_LAYER_KHRONOS_validation\0",
-            ));
+            layer_names.push(CStr::from_bytes_with_nul_unchecked(b"VK_LAYER_KHRONOS_validation\0"));
 
             println!("Validation layers:");
             for layer_name in layer_names.iter() {
                 println!("  - {}", layer_name.to_str().unwrap());
             }
 
-            let layers_names_raw: Vec<*const c_char> = layer_names
-                .iter()
-                .map(|raw_name| raw_name.as_ptr())
-                .collect();
+            let layers_names_raw: Vec<*const c_char> = layer_names.iter().map(|raw_name| raw_name.as_ptr()).collect();
 
-            let instance_extensions =
-                ash_window::enumerate_required_extensions(window.display_handle).unwrap();
+            let instance_extensions = ash_window::enumerate_required_extensions(window.display_handle).unwrap();
 
             println!("Instance extensions:");
             for extension_name in instance_extensions.iter() {
@@ -107,23 +101,15 @@ impl RenderDeviceImpl {
             let instance = entry.create_instance(&instance_info, None).unwrap();
 
             let ext_surface = khr::Surface::new(&entry, &instance);
-            let surface = ash_window::create_surface(
-                &entry,
-                &instance,
-                window.display_handle,
-                window.window_handle,
-                None,
-            )
-            .unwrap();
+            let surface =
+                ash_window::create_surface(&entry, &instance, window.display_handle, window.window_handle, None)
+                    .unwrap();
 
             let all_devices = instance.enumerate_physical_devices().unwrap();
             println!("Available devices:");
             for device in all_devices.iter() {
                 let info = instance.get_physical_device_properties(*device);
-                println!(
-                    "  - {}",
-                    CStr::from_ptr(info.device_name.as_ptr()).to_str().unwrap()
-                );
+                println!("  - {}", CStr::from_ptr(info.device_name.as_ptr()).to_str().unwrap());
             }
 
             let (physical_device, queue_family_idx) = instance
@@ -160,9 +146,7 @@ impl RenderDeviceImpl {
             let device_properties = instance.get_physical_device_properties(physical_device);
             println!(
                 "Running on device: {}",
-                CStr::from_ptr(device_properties.device_name.as_ptr())
-                    .to_str()
-                    .unwrap()
+                CStr::from_ptr(device_properties.device_name.as_ptr()).to_str().unwrap()
             );
 
             let device_extensions = [
@@ -209,15 +193,13 @@ impl RenderDeviceImpl {
                 .descriptor_binding_storage_image_update_after_bind(true)
                 .descriptor_binding_variable_descriptor_count(true);
 
-            let mut features_acceleration_structure =
-                vk::PhysicalDeviceAccelerationStructureFeaturesKHR::builder()
-                    .acceleration_structure(true)
-                    .build();
+            let mut features_acceleration_structure = vk::PhysicalDeviceAccelerationStructureFeaturesKHR::builder()
+                .acceleration_structure(true)
+                .build();
 
-            let mut features_raytracing_pipeline =
-                vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::builder()
-                    .ray_tracing_pipeline(true)
-                    .build();
+            let mut features_raytracing_pipeline = vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::builder()
+                .ray_tracing_pipeline(true)
+                .build();
 
             let device_info = vk::DeviceCreateInfo::builder()
                 .queue_create_infos(std::slice::from_ref(&queue_info))
@@ -230,9 +212,7 @@ impl RenderDeviceImpl {
                 .push_next(&mut features_acceleration_structure)
                 .push_next(&mut features_raytracing_pipeline);
 
-            let device = instance
-                .create_device(physical_device, &device_info, None)
-                .unwrap();
+            let device = instance.create_device(physical_device, &device_info, None).unwrap();
             let queue = device.get_device_queue(queue_family_idx, 0);
 
             let pool_info = vk::CommandPoolCreateInfo::builder()
@@ -261,12 +241,9 @@ impl RenderDeviceImpl {
                 .pool_sizes(&pool_sizes)
                 .max_sets(1000);
 
-            let descriptor_pool = device
-                .create_descriptor_pool(&descriptor_pool_info, None)
-                .unwrap();
+            let descriptor_pool = device.create_descriptor_pool(&descriptor_pool_info, None).unwrap();
 
-            let single_time_command_buffer =
-                device.allocate_command_buffers(&alloc_info).unwrap()[0];
+            let single_time_command_buffer = device.allocate_command_buffers(&alloc_info).unwrap()[0];
             let fence_info = vk::FenceCreateInfo::builder();
 
             let single_time_fence = device.create_fence(&fence_info, None).unwrap();
@@ -326,9 +303,7 @@ impl RenderDeviceImpl {
 
     pub fn device_name(&self) -> String {
         unsafe {
-            let device_properties = self
-                .instance
-                .get_physical_device_properties(self.physical_device);
+            let device_properties = self.instance.get_physical_device_properties(self.physical_device);
             CStr::from_ptr(device_properties.device_name.as_ptr())
                 .to_str()
                 .unwrap()
@@ -353,8 +328,7 @@ impl RenderDeviceImpl {
             .level(vk::CommandBufferLevel::PRIMARY)
             .command_buffer_count(1);
         let cmd_buffer = unsafe { self.device.allocate_command_buffers(&alloc_info) }.unwrap()[0];
-        let begin_info = vk::CommandBufferBeginInfo::builder()
-            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+        let begin_info = vk::CommandBufferBeginInfo::builder().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
         unsafe { self.device.begin_command_buffer(cmd_buffer, &begin_info) }.unwrap();
 
         f(cmd_buffer);
@@ -362,8 +336,7 @@ impl RenderDeviceImpl {
         unsafe { self.device.end_command_buffer(cmd_buffer) }.unwrap();
 
         unsafe { self.device.reset_fences(std::slice::from_ref(&fence)) }.unwrap();
-        let submit_info =
-            vk::SubmitInfo::builder().command_buffers(std::slice::from_ref(&cmd_buffer));
+        let submit_info = vk::SubmitInfo::builder().command_buffers(std::slice::from_ref(&cmd_buffer));
 
         {
             let queue = self.queue.lock().unwrap();
@@ -387,26 +360,20 @@ impl RenderDeviceImpl {
 
     pub unsafe fn run_single_commands(&self, f: &dyn Fn(vk::CommandBuffer)) {
         self.device
-            .reset_command_buffer(
-                self.single_time_command_buffer,
-                vk::CommandBufferResetFlags::empty(),
-            )
+            .reset_command_buffer(self.single_time_command_buffer, vk::CommandBufferResetFlags::empty())
             .unwrap();
-        let begin_info = vk::CommandBufferBeginInfo::builder()
-            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+        let begin_info = vk::CommandBufferBeginInfo::builder().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
         self.device
             .begin_command_buffer(self.single_time_command_buffer, &begin_info)
             .unwrap();
         f(self.single_time_command_buffer);
-        self.device
-            .end_command_buffer(self.single_time_command_buffer)
-            .unwrap();
+        self.device.end_command_buffer(self.single_time_command_buffer).unwrap();
 
         self.device
             .reset_fences(std::slice::from_ref(&self.single_time_fence))
             .unwrap();
-        let submit_info = vk::SubmitInfo::builder()
-            .command_buffers(std::slice::from_ref(&self.single_time_command_buffer));
+        let submit_info =
+            vk::SubmitInfo::builder().command_buffers(std::slice::from_ref(&self.single_time_command_buffer));
 
         {
             let queue = self.queue.lock().unwrap();
@@ -420,11 +387,7 @@ impl RenderDeviceImpl {
         }
 
         self.device
-            .wait_for_fences(
-                std::slice::from_ref(&self.single_time_fence),
-                true,
-                u64::MAX,
-            )
+            .wait_for_fences(std::slice::from_ref(&self.single_time_fence), true, u64::MAX)
             .unwrap();
     }
 
@@ -462,8 +425,7 @@ impl Drop for RenderDeviceImpl {
             }
             self.device.destroy_fence(self.single_time_fence, None);
             self.device.destroy_sampler(self.nearest_sampler, None);
-            self.device
-                .destroy_descriptor_pool(self.descriptor_pool, None);
+            self.device.destroy_descriptor_pool(self.descriptor_pool, None);
             self.device.destroy_command_pool(self.command_pool, None);
             self.device.destroy_device(None);
             self.instance.destroy_instance(None);

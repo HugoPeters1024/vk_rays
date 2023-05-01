@@ -45,11 +45,7 @@ impl VulkanAsset for RaytracingPipeline {
         let raygen_shader = shaders.get(&self.raygen_shader)?;
         let hit_shader = shaders.get(&self.hit_shader)?;
         let miss_shader = shaders.get(&self.miss_shader)?;
-        Some((
-            raygen_shader.clone(),
-            hit_shader.clone(),
-            miss_shader.clone(),
-        ))
+        Some((raygen_shader.clone(), hit_shader.clone(), miss_shader.clone()))
     }
 
     fn prepare_asset(device: &RenderDevice, asset: Self::ExtractedAsset) -> Self::PreparedAsset {
@@ -57,8 +53,7 @@ impl VulkanAsset for RaytracingPipeline {
         println!("creating RT pipeline");
         let (descriptor_set_layout, pipeline_layout, vk_pipeline, nr_shader_groups) =
             create_raytracing_pipeline(&device, &raygen_shader, &hit_shader, &miss_shader);
-        let shader_binding_table =
-            create_shader_binding_table(&device, vk_pipeline, nr_shader_groups as u32);
+        let shader_binding_table = create_shader_binding_table(&device, vk_pipeline, nr_shader_groups as u32);
 
         let descriptor_set_alloc_info = vk::DescriptorSetAllocateInfo::builder()
             .descriptor_pool(device.descriptor_pool)
@@ -84,18 +79,10 @@ impl VulkanAsset for RaytracingPipeline {
     fn destroy_asset(asset: Self::PreparedAsset, cleanup: &VkCleanup) {
         cleanup.send(VkCleanupEvent::Pipeline(asset.vk_pipeline));
         cleanup.send(VkCleanupEvent::PipelineLayout(asset.pipeline_layout));
-        cleanup.send(VkCleanupEvent::DescriptorSetLayout(
-            asset.descriptor_set_layout,
-        ));
-        cleanup.send(VkCleanupEvent::Buffer(
-            asset.shader_binding_table.raygen.handle,
-        ));
-        cleanup.send(VkCleanupEvent::Buffer(
-            asset.shader_binding_table.miss.handle,
-        ));
-        cleanup.send(VkCleanupEvent::Buffer(
-            asset.shader_binding_table.hit.handle,
-        ));
+        cleanup.send(VkCleanupEvent::DescriptorSetLayout(asset.descriptor_set_layout));
+        cleanup.send(VkCleanupEvent::Buffer(asset.shader_binding_table.raygen.handle));
+        cleanup.send(VkCleanupEvent::Buffer(asset.shader_binding_table.miss.handle));
+        cleanup.send(VkCleanupEvent::Buffer(asset.shader_binding_table.hit.handle));
     }
 }
 
@@ -154,12 +141,7 @@ fn create_raytracing_pipeline(
     raygen_shader: &Shader,
     hit_shader: &Shader,
     miss_shader: &Shader,
-) -> (
-    vk::DescriptorSetLayout,
-    vk::PipelineLayout,
-    vk::Pipeline,
-    usize,
-) {
+) -> (vk::DescriptorSetLayout, vk::PipelineLayout, vk::Pipeline, usize) {
     let bindings = [
         vk::DescriptorSetLayoutBinding::builder()
             .binding(0)
@@ -175,8 +157,7 @@ fn create_raytracing_pipeline(
             .build(),
     ];
 
-    let descriptor_set_layout_info =
-        vk::DescriptorSetLayoutCreateInfo::builder().bindings(&bindings);
+    let descriptor_set_layout_info = vk::DescriptorSetLayoutCreateInfo::builder().bindings(&bindings);
 
     let descriptor_set_layout = unsafe {
         device
@@ -268,25 +249,14 @@ fn create_raytracing_pipeline(
         }
     }
 
-    (
-        descriptor_set_layout,
-        pipeline_layout,
-        pipeline,
-        shader_groups.len(),
-    )
+    (descriptor_set_layout, pipeline_layout, pipeline, shader_groups.len())
 }
 
-fn create_shader_binding_table(
-    device: &RenderDevice,
-    pipeline: vk::Pipeline,
-    group_count: u32,
-) -> SBT {
+fn create_shader_binding_table(device: &RenderDevice, pipeline: vk::Pipeline, group_count: u32) -> SBT {
     let raytracing_properties = get_raytracing_properties(&device);
     let handle_size = raytracing_properties.shader_group_handle_size;
-    let handle_size_aligned = vk_utils::aligned_size(
-        handle_size,
-        raytracing_properties.shader_group_handle_alignment,
-    ) as usize;
+    let handle_size_aligned =
+        vk_utils::aligned_size(handle_size, raytracing_properties.shader_group_handle_alignment) as usize;
     let sbt_size = group_count as usize * handle_size_aligned;
 
     let handle_data = unsafe {
@@ -297,18 +267,10 @@ fn create_shader_binding_table(
             .unwrap()
     };
 
-    let mut raygen = device.create_host_buffer::<u8>(
-        handle_size as u64,
-        vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR,
-    );
-    let mut miss = device.create_host_buffer::<u8>(
-        handle_size as u64,
-        vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR,
-    );
-    let mut hit = device.create_host_buffer::<u8>(
-        handle_size as u64,
-        vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR,
-    );
+    let mut raygen =
+        device.create_host_buffer::<u8>(handle_size as u64, vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR);
+    let mut miss = device.create_host_buffer::<u8>(handle_size as u64, vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR);
+    let mut hit = device.create_host_buffer::<u8>(handle_size as u64, vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR);
 
     for (i, b) in handle_data
         .iter()
@@ -346,9 +308,7 @@ fn create_shader_binding_table(
     }
 }
 
-fn get_raytracing_properties(
-    device: &RenderDevice,
-) -> vk::PhysicalDeviceRayTracingPipelinePropertiesKHR {
+fn get_raytracing_properties(device: &RenderDevice) -> vk::PhysicalDeviceRayTracingPipelinePropertiesKHR {
     let mut raytracing_properties = vk::PhysicalDeviceRayTracingPipelinePropertiesKHR::default();
     let mut properties2 = vk::PhysicalDeviceProperties2KHR::builder()
         .push_next(&mut raytracing_properties)
@@ -361,11 +321,8 @@ fn get_raytracing_properties(
     raytracing_properties
 }
 
-fn get_acceleration_structure_features(
-    device: &RenderDevice,
-) -> vk::PhysicalDeviceAccelerationStructureFeaturesKHR {
-    let mut acceleration_structure_features =
-        vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default();
+fn get_acceleration_structure_features(device: &RenderDevice) -> vk::PhysicalDeviceAccelerationStructureFeaturesKHR {
+    let mut acceleration_structure_features = vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default();
     let mut features2 = vk::PhysicalDeviceFeatures2KHR::builder()
         .push_next(&mut acceleration_structure_features)
         .build();

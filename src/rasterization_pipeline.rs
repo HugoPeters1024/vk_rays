@@ -47,9 +47,7 @@ impl VulkanAsset for RasterizationPipeline {
     fn destroy_asset(asset: VkRasterizationPipeline, cleanup: &VkCleanup) {
         cleanup.send(VkCleanupEvent::Pipeline(asset.vk_pipeline));
         cleanup.send(VkCleanupEvent::PipelineLayout(asset.pipeline_layout));
-        cleanup.send(VkCleanupEvent::DescriptorSetLayout(
-            asset.descriptor_set_layout,
-        ));
+        cleanup.send(VkCleanupEvent::DescriptorSetLayout(asset.descriptor_set_layout));
     }
 }
 
@@ -69,11 +67,7 @@ impl Plugin for RasterizationPipelinePlugin {
     }
 }
 
-fn create_rast_pipeline(
-    device: &RenderDevice,
-    vs: &Shader,
-    fs: &Shader,
-) -> VkRasterizationPipeline {
+fn create_rast_pipeline(device: &RenderDevice, vs: &Shader, fs: &Shader) -> VkRasterizationPipeline {
     let shader_stages = [
         device.load_shader(&vs, vk::ShaderStageFlags::VERTEX),
         device.load_shader(&fs, vk::ShaderStageFlags::FRAGMENT),
@@ -99,23 +93,21 @@ fn create_rast_pipeline(
         .polygon_mode(vk::PolygonMode::FILL)
         .cull_mode(vk::CullModeFlags::NONE);
 
-    let multisampling = vk::PipelineMultisampleStateCreateInfo::builder()
-        .rasterization_samples(vk::SampleCountFlags::TYPE_1);
+    let multisampling =
+        vk::PipelineMultisampleStateCreateInfo::builder().rasterization_samples(vk::SampleCountFlags::TYPE_1);
 
     let color_blend_attachment = vk::PipelineColorBlendAttachmentState::builder()
         .color_write_mask(vk::ColorComponentFlags::RGBA)
         .blend_enable(false)
         .build();
 
-    let color_blending = vk::PipelineColorBlendStateCreateInfo::builder()
-        .attachments(std::slice::from_ref(&color_blend_attachment));
+    let color_blending =
+        vk::PipelineColorBlendStateCreateInfo::builder().attachments(std::slice::from_ref(&color_blend_attachment));
 
     let (descriptor_set_layout, descriptor_set) = create_rast_descriptor_data(device);
 
-    let layout_info = vk::PipelineLayoutCreateInfo::builder()
-        .set_layouts(std::slice::from_ref(&descriptor_set_layout));
-    let pipeline_layout =
-        unsafe { device.device.create_pipeline_layout(&layout_info, None) }.unwrap();
+    let layout_info = vk::PipelineLayoutCreateInfo::builder().set_layouts(std::slice::from_ref(&descriptor_set_layout));
+    let pipeline_layout = unsafe { device.device.create_pipeline_layout(&layout_info, None) }.unwrap();
 
     let pipeline_info = vk::GraphicsPipelineCreateInfo::builder()
         .stages(&shader_stages)
@@ -129,21 +121,15 @@ fn create_rast_pipeline(
         .layout(pipeline_layout);
 
     let pipeline = unsafe {
-        device.device.create_graphics_pipelines(
-            vk::PipelineCache::null(),
-            &[pipeline_info.build()],
-            None,
-        )
+        device
+            .device
+            .create_graphics_pipelines(vk::PipelineCache::null(), &[pipeline_info.build()], None)
     }
     .unwrap()[0];
 
     unsafe {
-        device
-            .device
-            .destroy_shader_module(shader_stages[0].module, None);
-        device
-            .device
-            .destroy_shader_module(shader_stages[1].module, None);
+        device.device.destroy_shader_module(shader_stages[0].module, None);
+        device.device.destroy_shader_module(shader_stages[1].module, None);
     }
 
     VkRasterizationPipeline {
@@ -154,9 +140,7 @@ fn create_rast_pipeline(
     }
 }
 
-fn create_rast_descriptor_data(
-    device: &RenderDevice,
-) -> (vk::DescriptorSetLayout, vk::DescriptorSet) {
+fn create_rast_descriptor_data(device: &RenderDevice) -> (vk::DescriptorSetLayout, vk::DescriptorSet) {
     let sampler_layout_binding = vk::DescriptorSetLayoutBinding::builder()
         .binding(0)
         .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
@@ -164,15 +148,10 @@ fn create_rast_descriptor_data(
         .stage_flags(vk::ShaderStageFlags::FRAGMENT)
         .build();
 
-    let layout_info = vk::DescriptorSetLayoutCreateInfo::builder()
-        .bindings(std::slice::from_ref(&sampler_layout_binding));
+    let layout_info =
+        vk::DescriptorSetLayoutCreateInfo::builder().bindings(std::slice::from_ref(&sampler_layout_binding));
 
-    let layout = unsafe {
-        device
-            .device
-            .create_descriptor_set_layout(&layout_info, None)
-            .unwrap()
-    };
+    let layout = unsafe { device.device.create_descriptor_set_layout(&layout_info, None).unwrap() };
 
     let set = unsafe {
         device

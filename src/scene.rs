@@ -115,14 +115,11 @@ fn update_scene(
     let primitive_count = instances.len() as u32;
 
     let build_sizes = unsafe {
-        device
-            .exts
-            .rt_acc_struct
-            .get_acceleration_structure_build_sizes(
-                vk::AccelerationStructureBuildTypeKHR::DEVICE,
-                &build_geometry,
-                std::slice::from_ref(&primitive_count),
-            )
+        device.exts.rt_acc_struct.get_acceleration_structure_build_sizes(
+            vk::AccelerationStructureBuildTypeKHR::DEVICE,
+            &build_geometry,
+            std::slice::from_ref(&primitive_count),
+        )
     };
 
     let acceleration_structure_buffer = device.create_device_buffer(
@@ -144,10 +141,8 @@ fn update_scene(
     }
     .unwrap();
 
-    let scratch_buffer: Buffer<u8> = device.create_device_buffer(
-        build_sizes.build_scratch_size,
-        vk::BufferUsageFlags::STORAGE_BUFFER,
-    );
+    let scratch_buffer: Buffer<u8> =
+        device.create_device_buffer(build_sizes.build_scratch_size, vk::BufferUsageFlags::STORAGE_BUFFER);
 
     let build_geometry = vk::AccelerationStructureBuildGeometryInfoKHR::builder()
         .ty(vk::AccelerationStructureTypeKHR::TOP_LEVEL)
@@ -178,14 +173,11 @@ fn update_scene(
     }
 
     let address = unsafe {
-        device
-            .exts
-            .rt_acc_struct
-            .get_acceleration_structure_device_address(
-                &vk::AccelerationStructureDeviceAddressInfoKHR::builder()
-                    .acceleration_structure(acceleration_structure)
-                    .build(),
-            )
+        device.exts.rt_acc_struct.get_acceleration_structure_device_address(
+            &vk::AccelerationStructureDeviceAddressInfoKHR::builder()
+                .acceleration_structure(acceleration_structure)
+                .build(),
+        )
     };
 
     cleanup.send(VkCleanupEvent::Buffer(scratch_buffer.handle));

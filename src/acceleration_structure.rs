@@ -149,28 +149,20 @@ impl VulkanAsset for GltfMesh {
             .collect::<Vec<_>>();
 
         let geometry_sizes = unsafe {
-            device
-                .exts
-                .rt_acc_struct
-                .get_acceleration_structure_build_sizes(
-                    vk::AccelerationStructureBuildTypeKHR::DEVICE,
-                    &combined_build_info,
-                    &primitive_counts,
-                )
+            device.exts.rt_acc_struct.get_acceleration_structure_build_sizes(
+                vk::AccelerationStructureBuildTypeKHR::DEVICE,
+                &combined_build_info,
+                &primitive_counts,
+            )
         };
 
         let num_triangles = primitive_counts.iter().sum::<u32>();
 
-        let mut acceleration_structure = allocate_acceleration_structure(
-            &device,
-            vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
-            &geometry_sizes,
-        );
+        let mut acceleration_structure =
+            allocate_acceleration_structure(&device, vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL, &geometry_sizes);
 
-        let scratch_buffer: Buffer<u8> = device.create_device_buffer(
-            geometry_sizes.build_scratch_size,
-            vk::BufferUsageFlags::STORAGE_BUFFER,
-        );
+        let scratch_buffer: Buffer<u8> =
+            device.create_device_buffer(geometry_sizes.build_scratch_size, vk::BufferUsageFlags::STORAGE_BUFFER);
 
         let build_geometry_info = vk::AccelerationStructureBuildGeometryInfoKHR::builder()
             .ty(vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL)
@@ -206,14 +198,11 @@ impl VulkanAsset for GltfMesh {
         device.destroy_buffer(scratch_buffer);
 
         acceleration_structure.address = unsafe {
-            device
-                .exts
-                .rt_acc_struct
-                .get_acceleration_structure_device_address(
-                    &vk::AccelerationStructureDeviceAddressInfoKHR::builder()
-                        .acceleration_structure(acceleration_structure.handle)
-                        .build(),
-                )
+            device.exts.rt_acc_struct.get_acceleration_structure_device_address(
+                &vk::AccelerationStructureDeviceAddressInfoKHR::builder()
+                    .acceleration_structure(acceleration_structure.handle)
+                    .build(),
+            )
         };
 
         let blas = BLAS {
@@ -231,9 +220,7 @@ impl VulkanAsset for GltfMesh {
         cleanup.send(VkCleanupEvent::AccelerationStructure(
             asset.acceleration_structure.handle,
         ));
-        cleanup.send(VkCleanupEvent::Buffer(
-            asset.acceleration_structure.buffer.handle,
-        ));
+        cleanup.send(VkCleanupEvent::Buffer(asset.acceleration_structure.buffer.handle));
     }
 }
 
@@ -243,13 +230,7 @@ fn extract_mesh_sizes(mesh: &gltf::Mesh) -> (usize, usize) {
     for primitive in mesh.primitives() {
         let positions = primitive
             .attributes()
-            .find_map(|(s, a)| {
-                if s == gltf::Semantic::Positions {
-                    Some(a)
-                } else {
-                    None
-                }
-            })
+            .find_map(|(s, a)| if s == gltf::Semantic::Positions { Some(a) } else { None })
             .unwrap();
         vertex_count += positions.count();
 
@@ -258,11 +239,7 @@ fn extract_mesh_sizes(mesh: &gltf::Mesh) -> (usize, usize) {
     (vertex_count, index_count)
 }
 
-fn extract_mesh_data(
-    gltf: &GltfMesh,
-    vertex_buffer: &mut [Vertex],
-    index_buffer: &mut [u32],
-) -> Vec<GeometryDescr> {
+fn extract_mesh_data(gltf: &GltfMesh, vertex_buffer: &mut [Vertex], index_buffer: &mut [u32]) -> Vec<GeometryDescr> {
     let mesh = gltf.single_mesh();
     let mut geometries = Vec::new();
     let mut vertex_buffer_head = 0;
@@ -270,13 +247,7 @@ fn extract_mesh_data(
     for primitive in mesh.primitives() {
         let positions = primitive
             .attributes()
-            .find_map(|(s, a)| {
-                if s == gltf::Semantic::Positions {
-                    Some(a)
-                } else {
-                    None
-                }
-            })
+            .find_map(|(s, a)| if s == gltf::Semantic::Positions { Some(a) } else { None })
             .unwrap();
         let indices = primitive.indices().unwrap();
 
@@ -334,14 +305,11 @@ fn allocate_acceleration_structure(
     .unwrap();
 
     let address = unsafe {
-        device
-            .exts
-            .rt_acc_struct
-            .get_acceleration_structure_device_address(
-                &vk::AccelerationStructureDeviceAddressInfoKHR::builder()
-                    .acceleration_structure(acceleration_structure)
-                    .build(),
-            )
+        device.exts.rt_acc_struct.get_acceleration_structure_device_address(
+            &vk::AccelerationStructureDeviceAddressInfoKHR::builder()
+                .acceleration_structure(acceleration_structure)
+                .build(),
+        )
     };
 
     AccelerationStructure {

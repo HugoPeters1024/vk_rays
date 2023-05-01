@@ -48,19 +48,9 @@ pub trait BufferProvider {
 
     fn create_device_buffer<T>(&self, size: u64, usage: vk::BufferUsageFlags) -> Buffer<T>;
 
-    fn create_buffer<T>(
-        &self,
-        size: u64,
-        usage: vk::BufferUsageFlags,
-        location: MemoryLocation,
-    ) -> Buffer<T>;
+    fn create_buffer<T>(&self, size: u64, usage: vk::BufferUsageFlags, location: MemoryLocation) -> Buffer<T>;
 
-    fn upload_buffer<T>(
-        &self,
-        cmd_buffer: vk::CommandBuffer,
-        host_buffer: &Buffer<T>,
-        device_buffer: &Buffer<T>,
-    );
+    fn upload_buffer<T>(&self, cmd_buffer: vk::CommandBuffer, host_buffer: &Buffer<T>, device_buffer: &Buffer<T>);
 
     fn map_buffer<T>(&self, buffer: &mut Buffer<T>) -> BufferView<T>;
 
@@ -84,12 +74,7 @@ impl BufferProvider for RenderDevice {
         )
     }
 
-    fn create_buffer<T>(
-        &self,
-        nr_elements: u64,
-        usage: vk::BufferUsageFlags,
-        location: MemoryLocation,
-    ) -> Buffer<T> {
+    fn create_buffer<T>(&self, nr_elements: u64, usage: vk::BufferUsageFlags, location: MemoryLocation) -> Buffer<T> {
         let buffer_info = vk::BufferCreateInfo::builder()
             .size(nr_elements * std::mem::size_of::<T>() as u64)
             .usage(usage);
@@ -120,11 +105,8 @@ impl BufferProvider for RenderDevice {
         }
 
         let address = unsafe {
-            self.device.get_buffer_device_address(
-                &vk::BufferDeviceAddressInfo::builder()
-                    .buffer(handle)
-                    .build(),
-            )
+            self.device
+                .get_buffer_device_address(&vk::BufferDeviceAddressInfo::builder().buffer(handle).build())
         };
 
         Buffer {
@@ -136,24 +118,15 @@ impl BufferProvider for RenderDevice {
         }
     }
 
-    fn upload_buffer<T>(
-        &self,
-        cmd_buffer: vk::CommandBuffer,
-        host_buffer: &Buffer<T>,
-        device_buffer: &Buffer<T>,
-    ) {
+    fn upload_buffer<T>(&self, cmd_buffer: vk::CommandBuffer, host_buffer: &Buffer<T>, device_buffer: &Buffer<T>) {
         unsafe {
             let copy_region = vk::BufferCopy::builder()
                 .src_offset(0)
                 .dst_offset(0)
                 .size(host_buffer.nr_elements * std::mem::size_of::<T>() as u64)
                 .build();
-            self.device.cmd_copy_buffer(
-                cmd_buffer,
-                host_buffer.handle,
-                device_buffer.handle,
-                &[copy_region],
-            );
+            self.device
+                .cmd_copy_buffer(cmd_buffer, host_buffer.handle, device_buffer.handle, &[copy_region]);
         }
     }
 

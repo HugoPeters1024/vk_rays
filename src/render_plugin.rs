@@ -64,13 +64,9 @@ pub struct RenderResources {
 }
 
 fn cleanup_render_resources(render_resources: Res<RenderResources>, cleanup: Res<VkCleanup>) {
-    cleanup.send(VkCleanupEvent::ImageView(
-        render_resources.render_target.view,
-    ));
+    cleanup.send(VkCleanupEvent::ImageView(render_resources.render_target.view));
     cleanup.send(VkCleanupEvent::Image(render_resources.render_target.handle));
-    cleanup.send(VkCleanupEvent::Buffer(
-        render_resources.uniform_buffer.handle,
-    ));
+    cleanup.send(VkCleanupEvent::Buffer(render_resources.uniform_buffer.handle));
 }
 
 pub struct UniformData {
@@ -86,9 +82,8 @@ impl Plugin for RenderPlugin {
         let mut winit_settings = app.world.get_resource_mut::<WinitSettings>().unwrap();
         winit_settings.return_from_run = true;
 
-        let mut system_state: SystemState<
-            Query<(&Window, &RawHandleWrapper), With<PrimaryWindow>>,
-        > = SystemState::new(&mut app.world);
+        let mut system_state: SystemState<Query<(&Window, &RawHandleWrapper), With<PrimaryWindow>>> =
+            SystemState::new(&mut app.world);
         let query = system_state.get(&app.world);
         let (window, whandles) = query.get_single().unwrap();
         let render_device = RenderDevice::from_window(whandles);
@@ -153,11 +148,9 @@ impl Plugin for RenderPlugin {
             });
         }
 
-
         app.world.insert_resource(RenderResources {
             render_target,
-            uniform_buffer: render_device
-                .create_host_buffer::<UniformData>(1, vk::BufferUsageFlags::UNIFORM_BUFFER),
+            uniform_buffer: render_device.create_host_buffer::<UniformData>(1, vk::BufferUsageFlags::UNIFORM_BUFFER),
         });
     }
 }
@@ -166,11 +159,7 @@ fn run_render_schedule(world: &mut World) {
     world.run_schedule(RenderSchedule);
 }
 
-fn wait_for_frame_finish(
-    device: Res<RenderDevice>,
-    cleanup: Res<VkCleanup>,
-    mut swapchain: Query<&mut Swapchain>,
-) {
+fn wait_for_frame_finish(device: Res<RenderDevice>, cleanup: Res<VkCleanup>, mut swapchain: Query<&mut Swapchain>) {
     let mut swapchain = swapchain.single_mut();
     unsafe {
         device
@@ -212,13 +201,9 @@ fn render(
             .reset_command_buffer(cmd_buffer, vk::CommandBufferResetFlags::empty())
             .unwrap();
 
-        let begin_info = vk::CommandBufferBeginInfo::builder()
-            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+        let begin_info = vk::CommandBufferBeginInfo::builder().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
 
-        device
-            .device
-            .begin_command_buffer(cmd_buffer, &begin_info)
-            .unwrap();
+        device.device.begin_command_buffer(cmd_buffer, &begin_info).unwrap();
 
         // Make swapchain available for rendering
         vk_utils::transition_image_layout(
@@ -244,10 +229,9 @@ fn render(
                     .image_info(std::slice::from_ref(&render_target_image_binding))
                     .build();
 
-                let mut p_acceleration_structure_write =
-                    vk::WriteDescriptorSetAccelerationStructureKHR::builder()
-                        .acceleration_structures(std::slice::from_ref(&tlas.handle))
-                        .build();
+                let mut p_acceleration_structure_write = vk::WriteDescriptorSetAccelerationStructureKHR::builder()
+                    .acceleration_structures(std::slice::from_ref(&tlas.handle))
+                    .build();
 
                 let mut write_acceleration_structure = vk::WriteDescriptorSet::builder()
                     .dst_set(compiled.descriptor_set)
@@ -257,10 +241,9 @@ fn render(
                     .build();
                 write_acceleration_structure.descriptor_count = 1;
 
-                device.device.update_descriptor_sets(
-                    &[write_render_target, write_acceleration_structure],
-                    &[],
-                );
+                device
+                    .device
+                    .update_descriptor_sets(&[write_render_target, write_acceleration_structure], &[]);
 
                 device.device.cmd_bind_pipeline(
                     cmd_buffer,
@@ -273,13 +256,9 @@ fn render(
                     let translation = Mat4::from_translation(Vec3::new(0.0, 0.0, -3.0));
                     let rotation = Mat4::from_rotation_y(time.elapsed_seconds());
                     uniform_view[0].inverse_view = (translation * rotation).inverse();
-                    uniform_view[0].inverse_proj = Mat4::perspective_rh(
-                        PI / 2.0,
-                        swapchain.width as f32 / swapchain.height as f32,
-                        0.001,
-                        100.0,
-                    )
-                    .inverse();
+                    uniform_view[0].inverse_proj =
+                        Mat4::perspective_rh(PI / 2.0, swapchain.width as f32 / swapchain.height as f32, 0.001, 100.0)
+                            .inverse();
                 }
 
                 let push_constants = RaytracerRegisters {
@@ -384,11 +363,9 @@ fn render(
                     }),
                 );
 
-                device.device.cmd_bind_pipeline(
-                    cmd_buffer,
-                    vk::PipelineBindPoint::GRAPHICS,
-                    compiled.vk_pipeline,
-                );
+                device
+                    .device
+                    .cmd_bind_pipeline(cmd_buffer, vk::PipelineBindPoint::GRAPHICS, compiled.vk_pipeline);
 
                 device.device.cmd_bind_descriptor_sets(
                     cmd_buffer,
@@ -419,9 +396,7 @@ fn render(
         let submit_info = vk::SubmitInfo::builder()
             .command_buffers(std::slice::from_ref(&cmd_buffer))
             .wait_semaphores(std::slice::from_ref(&swapchain.image_ready_sem))
-            .wait_dst_stage_mask(std::slice::from_ref(
-                &vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-            ))
+            .wait_dst_stage_mask(std::slice::from_ref(&vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT))
             .signal_semaphores(std::slice::from_ref(&swapchain.render_finished_sem))
             .build();
 
@@ -429,11 +404,7 @@ fn render(
             let queue = device.queue.lock().unwrap();
             device
                 .device
-                .queue_submit(
-                    queue.clone(),
-                    std::slice::from_ref(&submit_info),
-                    swapchain.fence,
-                )
+                .queue_submit(queue.clone(), std::slice::from_ref(&submit_info), swapchain.fence)
                 .unwrap();
         }
 
@@ -447,10 +418,7 @@ fn render(
 
         let present_result = {
             let queue = device.queue.lock().unwrap();
-            device
-                .exts
-                .swapchain
-                .queue_present(queue.clone(), &present_info)
+            device.exts.swapchain.queue_present(queue.clone(), &present_info)
         };
 
         match present_result {
