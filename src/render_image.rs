@@ -25,6 +25,15 @@ pub struct VkImage {
     pub view: vk::ImageView,
 }
 
+impl VkImage {
+    pub fn null() -> Self {
+        VkImage {
+            handle: vk::Image::null(),
+            view: vk::ImageView::null(),
+        }
+    }
+}
+
 impl VulkanAsset for Image {
     type ExtractedAsset = Image;
     type PreparedAsset = VkImage;

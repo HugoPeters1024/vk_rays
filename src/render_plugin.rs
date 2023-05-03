@@ -3,7 +3,6 @@ use std::f32::consts::PI;
 use crate::rasterization_pipeline::{RasterizationPipeline, RasterizationPipelinePlugin};
 use crate::raytracing_pipeline::{RaytracerRegisters, RaytracingPipeline, RaytracingPlugin};
 use crate::render_buffer::{Buffer, BufferProvider};
-use crate::render_image::{vk_image_from_asset, Image, VkImage};
 use crate::scene::{Scene, ScenePlugin};
 use crate::vulkan_assets::{AddVulkanAsset, VkAssetCleanupPlaybook, VulkanAssets};
 use crate::vulkan_cleanup::{VkCleanup, VkCleanupEvent, VkCleanupPlugin};
@@ -15,7 +14,6 @@ use bevy::ecs::event::ManualEventReader;
 use bevy::ecs::schedule::ScheduleLabel;
 use bevy::winit::WinitSettings;
 use bevy::{
-    ecs::system::SystemState,
     prelude::*,
     window::{PrimaryWindow, RawHandleWrapper},
 };
@@ -59,13 +57,10 @@ pub struct RenderConfig {
 
 #[derive(Resource)]
 pub struct RenderResources {
-    pub render_target: VkImage,
     pub uniform_buffer: Buffer<UniformData>,
 }
 
 fn cleanup_render_resources(render_resources: Res<RenderResources>, cleanup: Res<VkCleanup>) {
-    cleanup.send(VkCleanupEvent::ImageView(render_resources.render_target.view));
-    cleanup.send(VkCleanupEvent::Image(render_resources.render_target.handle));
     cleanup.send(VkCleanupEvent::Buffer(render_resources.uniform_buffer.handle));
 }
 
@@ -82,13 +77,11 @@ impl Plugin for RenderPlugin {
         let mut winit_settings = app.world.get_resource_mut::<WinitSettings>().unwrap();
         winit_settings.return_from_run = true;
 
-        let mut system_state: SystemState<Query<(&Window, &RawHandleWrapper), With<PrimaryWindow>>> =
-            SystemState::new(&mut app.world);
-        let query = system_state.get(&app.world);
-        let (window, whandles) = query.get_single().unwrap();
+        let (whandles, _) = app
+            .world
+            .query::<(&RawHandleWrapper, With<PrimaryWindow>)>()
+            .single(&mut app.world);
         let render_device = RenderDevice::from_window(whandles);
-        let window_width = window.physical_width();
-        let window_height = window.physical_height();
         app.world.insert_resource(render_device.clone());
 
         app.add_plugin(VkCleanupPlugin);
@@ -123,33 +116,7 @@ impl Plugin for RenderPlugin {
             .unwrap()
             .add_system(cleanup_render_resources);
 
-        let swapchain = app.world.query::<&Swapchain>().single(&mut app.world);
-
-        let render_target = vk_image_from_asset(
-            &render_device,
-            &Image {
-                width: swapchain.width,
-                height: swapchain.height,
-                format: vk::Format::R32G32B32A32_SFLOAT,
-                usage: vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::SAMPLED,
-                initial_layout: vk::ImageLayout::UNDEFINED,
-            },
-        );
-
-        unsafe {
-            render_device.run_single_commands(&|cmd_buffer| {
-                vk_utils::transition_image_layout(
-                    &render_device,
-                    cmd_buffer,
-                    render_target.handle,
-                    vk::ImageLayout::UNDEFINED,
-                    vk::ImageLayout::GENERAL,
-                );
-            });
-        }
-
         app.world.insert_resource(RenderResources {
-            render_target,
             uniform_buffer: render_device.create_host_buffer::<UniformData>(1, vk::BufferUsageFlags::UNIFORM_BUFFER),
         });
     }
@@ -179,7 +146,6 @@ fn wait_for_frame_finish(device: Res<RenderDevice>, cleanup: Res<VkCleanup>, mut
 
 fn render(
     device: Res<RenderDevice>,
-    cleanup: Res<VkCleanup>,
     scene: Res<Scene>,
     time: Res<Time>,
     mut swapchain: Query<&mut Swapchain>,
@@ -190,6 +156,9 @@ fn render(
     primary_window: Query<&Window, With<PrimaryWindow>>,
 ) {
     let mut swapchain = swapchain.single_mut();
+    if swapchain.render_target.handle == vk::Image::null() {
+        return;
+    }
 
     // wait for the previous frame to finish
     unsafe {
@@ -219,7 +188,7 @@ fn render(
                 // update the descriptor set
                 let render_target_image_binding = vk::DescriptorImageInfo::builder()
                     .image_layout(vk::ImageLayout::GENERAL)
-                    .image_view(render_resources.render_target.view)
+                    .image_view(swapchain.render_target.view)
                     .build();
 
                 let write_render_target = vk::WriteDescriptorSet::builder()
@@ -297,7 +266,7 @@ fn render(
             vk_utils::transition_image_layout(
                 &device,
                 cmd_buffer,
-                render_resources.render_target.handle,
+                swapchain.render_target.handle,
                 vk::ImageLayout::GENERAL,
                 vk::ImageLayout::GENERAL,
             );
@@ -306,7 +275,7 @@ fn render(
                 // update the descriptor set
                 let render_target_image_binding = vk::DescriptorImageInfo::builder()
                     .image_layout(vk::ImageLayout::GENERAL)
-                    .image_view(render_resources.render_target.view)
+                    .image_view(swapchain.render_target.view)
                     .sampler(device.nearest_sampler)
                     .build();
 
@@ -426,30 +395,6 @@ fn render(
                 println!("------ SWAPCHAIN OUT OF DATE ------");
                 let primary_window = primary_window.get_single().unwrap();
                 swapchain.on_resize(primary_window);
-
-                let render_target = vk_image_from_asset(
-                    &device,
-                    &Image {
-                        width: swapchain.width,
-                        height: swapchain.height,
-                        format: vk::Format::R32G32B32A32_SFLOAT,
-                        usage: vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::SAMPLED,
-                        initial_layout: vk::ImageLayout::UNDEFINED,
-                    },
-                );
-
-                device.run_single_commands(&|cmd_buffer| {
-                    vk_utils::transition_image_layout(
-                        &device,
-                        cmd_buffer,
-                        render_target.handle,
-                        vk::ImageLayout::UNDEFINED,
-                        vk::ImageLayout::GENERAL,
-                    );
-                });
-
-                cleanup.send(VkCleanupEvent::Image(render_resources.render_target.handle));
-                render_resources.render_target = render_target;
             }
             Err(e) => panic!("Failed to present swapchain image: {:?}", e),
             Ok(_) => {}

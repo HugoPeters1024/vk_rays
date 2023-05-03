@@ -15,21 +15,16 @@ mod vk_utils;
 mod vulkan_assets;
 mod vulkan_cleanup;
 
-use ash::vk;
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use clap::Parser;
 use gltf_assets::GltfMesh;
 use rasterization_pipeline::RasterizationPipeline;
-use render_buffer::BufferProvider;
-use render_device::RenderDevice;
-use render_plugin::{RenderConfig, UniformData};
+use render_plugin::RenderConfig;
 use shader::Shader;
-use vulkan_cleanup::{VkCleanup, VkCleanupEvent};
 
 use crate::raytracing_pipeline::RaytracingPipeline;
 use crate::render_plugin::RenderPlugin;
-use crate::vulkan_assets::VkAssetCleanupPlaybook;
 
 #[derive(Parser)]
 struct Cli {
@@ -58,17 +53,13 @@ fn main() {
         app.run();
     }
 
+    drop(app);
+    std::thread::sleep(std::time::Duration::from_millis(300));
     println!("Goodbye!");
-}
-
-#[derive(Resource)]
-struct Lol {
-    box_mesh: Handle<GltfMesh>,
 }
 
 fn startup(
     mut commands: Commands,
-    device: Res<RenderDevice>,
     assets: Res<AssetServer>,
     mut rt_pipelines: ResMut<Assets<RaytracingPipeline>>,
     mut rast_pipelines: ResMut<Assets<RasterizationPipeline>>,

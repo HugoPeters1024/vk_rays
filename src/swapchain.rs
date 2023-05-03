@@ -1,6 +1,6 @@
 use crate::{
     render_device::RenderDevice,
-    vulkan_cleanup::{VkCleanup, VkCleanupEvent},
+    vulkan_cleanup::{VkCleanup, VkCleanupEvent}, render_image::{Image, vk_image_from_asset, VkImage}, vk_utils,
 };
 use ash::vk;
 use bevy::{
@@ -40,6 +40,7 @@ pub struct Swapchain {
     pub render_finished_sem: vk::Semaphore,
     pub fence: vk::Fence,
     pub current_image_idx: usize,
+    pub render_target: VkImage,
 }
 
 impl Swapchain {
@@ -66,6 +67,7 @@ impl Swapchain {
                 render_finished_sem,
                 fence,
                 current_image_idx: 0,
+                render_target: VkImage::null(),
             };
 
             ret.on_resize(window);
@@ -179,6 +181,30 @@ impl Swapchain {
             })
             .collect();
 
+        self.cleanup.send(VkCleanupEvent::ImageView(self.render_target.view));
+        self.cleanup.send(VkCleanupEvent::Image(self.render_target.handle));
+
+        self.render_target = vk_image_from_asset(
+            &self.device,
+            &Image {
+                width: self.width,
+                height: self.height,
+                format: vk::Format::R32G32B32A32_SFLOAT,
+                usage: vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::SAMPLED,
+                initial_layout: vk::ImageLayout::UNDEFINED,
+            },
+        );
+
+        self.device.run_single_commands(&|cmd_buffer| {
+            vk_utils::transition_image_layout(
+                &self.device,
+                cmd_buffer,
+                self.render_target.handle,
+                vk::ImageLayout::UNDEFINED,
+                vk::ImageLayout::GENERAL,
+            );
+        });
+
         println!("Swapchain Resized: {}x{}", self.width, self.height);
     }
 }
@@ -189,6 +215,8 @@ impl Drop for Swapchain {
         self.device.wait_idle();
         let dv = &self.device.device;
         unsafe {
+            dv.destroy_image_view(self.render_target.view, None);
+            dv.destroy_image(self.render_target.handle, None);
             dv.destroy_fence(self.fence, None);
             dv.destroy_semaphore(self.render_finished_sem, None);
             dv.destroy_semaphore(self.image_ready_sem, None);

@@ -1,6 +1,5 @@
 use bevy::{
     asset::{AssetLoader, LoadedAsset},
-    prelude::*,
     reflect::TypeUuid,
 };
 

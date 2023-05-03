@@ -301,6 +301,7 @@ impl RenderDeviceImpl {
         }
     }
 
+    #[allow(unused)]
     pub fn device_name(&self) -> String {
         unsafe {
             let device_properties = self.instance.get_physical_device_properties(self.physical_device);
@@ -359,6 +360,7 @@ impl RenderDeviceImpl {
     }
 
     pub unsafe fn run_single_commands(&self, f: &dyn Fn(vk::CommandBuffer)) {
+        let queue = self.queue.lock().unwrap();
         self.device
             .reset_command_buffer(self.single_time_command_buffer, vk::CommandBufferResetFlags::empty())
             .unwrap();
@@ -368,24 +370,18 @@ impl RenderDeviceImpl {
             .unwrap();
         f(self.single_time_command_buffer);
         self.device.end_command_buffer(self.single_time_command_buffer).unwrap();
-
         self.device
             .reset_fences(std::slice::from_ref(&self.single_time_fence))
             .unwrap();
         let submit_info =
             vk::SubmitInfo::builder().command_buffers(std::slice::from_ref(&self.single_time_command_buffer));
-
-        {
-            let queue = self.queue.lock().unwrap();
-            self.device
-                .queue_submit(
-                    queue.clone(),
-                    std::slice::from_ref(&submit_info),
-                    self.single_time_fence,
-                )
-                .unwrap();
-        }
-
+        self.device
+            .queue_submit(
+                queue.clone(),
+                std::slice::from_ref(&submit_info),
+                self.single_time_fence,
+            )
+            .unwrap();
         self.device
             .wait_for_fences(std::slice::from_ref(&self.single_time_fence), true, u64::MAX)
             .unwrap();
