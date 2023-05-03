@@ -1,6 +1,8 @@
 use crate::{
     render_device::RenderDevice,
-    vulkan_cleanup::{VkCleanup, VkCleanupEvent}, render_image::{Image, vk_image_from_asset, VkImage}, vk_utils,
+    render_image::{vk_image_from_asset, Image, VkImage},
+    vk_utils,
+    vulkan_cleanup::{VkCleanup, VkCleanupEvent},
 };
 use ash::vk;
 use bevy::{
@@ -41,6 +43,7 @@ pub struct Swapchain {
     pub fence: vk::Fence,
     pub current_image_idx: usize,
     pub render_target: VkImage,
+    render_target_needs_transition: bool,
 }
 
 impl Swapchain {
@@ -68,10 +71,25 @@ impl Swapchain {
                 fence,
                 current_image_idx: 0,
                 render_target: VkImage::null(),
+                render_target_needs_transition: true,
             };
 
             ret.on_resize(window);
             ret
+        }
+    }
+
+    pub fn on_begin_render(&mut self, cmd_buffer: vk::CommandBuffer) {
+        if self.render_target_needs_transition {
+            println!("transitioning render target");
+            vk_utils::transition_image_layout(
+                &self.device,
+                cmd_buffer,
+                self.render_target.handle,
+                vk::ImageLayout::UNDEFINED,
+                vk::ImageLayout::GENERAL,
+            );
+            self.render_target_needs_transition = false;
         }
     }
 
@@ -194,16 +212,7 @@ impl Swapchain {
                 initial_layout: vk::ImageLayout::UNDEFINED,
             },
         );
-
-        self.device.run_single_commands(&|cmd_buffer| {
-            vk_utils::transition_image_layout(
-                &self.device,
-                cmd_buffer,
-                self.render_target.handle,
-                vk::ImageLayout::UNDEFINED,
-                vk::ImageLayout::GENERAL,
-            );
-        });
+        self.render_target_needs_transition = true;
 
         println!("Swapchain Resized: {}x{}", self.width, self.height);
     }

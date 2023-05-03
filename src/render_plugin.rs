@@ -156,9 +156,7 @@ fn render(
     primary_window: Query<&Window, With<PrimaryWindow>>,
 ) {
     let mut swapchain = swapchain.single_mut();
-    if swapchain.render_target.handle == vk::Image::null() {
-        return;
-    }
+
 
     // wait for the previous frame to finish
     unsafe {
@@ -173,6 +171,8 @@ fn render(
         let begin_info = vk::CommandBufferBeginInfo::builder().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
 
         device.device.begin_command_buffer(cmd_buffer, &begin_info).unwrap();
+
+        swapchain.on_begin_render(cmd_buffer);
 
         // Make swapchain available for rendering
         vk_utils::transition_image_layout(
