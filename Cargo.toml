@@ -25,6 +25,7 @@ bytemuck_derive = "1.4.1"
 crossbeam-channel = "0.5.8"
 winit = "0.28.3"
 gltf = "1.1.0"
+rand = "0.8.5"
 
 # Enable a small amount of optimization in debug mode
 [profile.dev]

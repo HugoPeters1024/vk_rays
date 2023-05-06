@@ -16,6 +16,8 @@ use crate::vulkan_cleanup::{VkCleanup, VkCleanupEvent};
 #[derive(Clone, Copy, Pod, Zeroable)]
 pub struct RaytracerRegisters {
     pub uniform_buffer_address: u64,
+    pub vertex_buffer_address: u64,
+    pub index_buffer_address: u64,
 }
 
 #[derive(Default, TypeUuid)]
@@ -167,7 +169,9 @@ fn create_raytracing_pipeline(
     };
 
     let push_constant_info = vk::PushConstantRange::builder()
-        .stage_flags(vk::ShaderStageFlags::RAYGEN_KHR)
+        .stage_flags(
+            vk::ShaderStageFlags::RAYGEN_KHR | vk::ShaderStageFlags::CLOSEST_HIT_KHR | vk::ShaderStageFlags::MISS_KHR,
+        )
         .offset(0)
         .size(std::mem::size_of::<RaytracerRegisters>() as u32)
         .build();

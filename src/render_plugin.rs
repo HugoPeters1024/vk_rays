@@ -1,5 +1,7 @@
 use std::f32::consts::PI;
 
+use crate::acceleration_structure::BLAS;
+use crate::gltf_assets::GltfMesh;
 use crate::rasterization_pipeline::{RasterizationPipeline, RasterizationPipelinePlugin};
 use crate::raytracing_pipeline::{RaytracerRegisters, RaytracingPipeline, RaytracingPlugin};
 use crate::render_buffer::{Buffer, BufferProvider};
@@ -17,6 +19,7 @@ use bevy::{
     prelude::*,
     window::{PrimaryWindow, RawHandleWrapper},
 };
+use rand::*;
 
 #[derive(ScheduleLabel, Debug, Hash, PartialEq, Eq, Clone)]
 pub struct RenderSchedule;
@@ -67,6 +70,7 @@ fn cleanup_render_resources(render_resources: Res<RenderResources>, cleanup: Res
 pub struct UniformData {
     inverse_view: Mat4,
     inverse_proj: Mat4,
+    entropy: u32,
 }
 
 pub struct RenderPlugin;
@@ -147,8 +151,8 @@ fn wait_for_frame_finish(device: Res<RenderDevice>, cleanup: Res<VkCleanup>, mut
 fn render(
     device: Res<RenderDevice>,
     scene: Res<Scene>,
-    time: Res<Time>,
     mut swapchain: Query<&mut Swapchain>,
+    blasses: Res<VulkanAssets<GltfMesh>>,
     render_config: Res<RenderConfig>,
     mut render_resources: ResMut<RenderResources>,
     rt_pipelines: Res<VulkanAssets<RaytracingPipeline>>,
@@ -156,7 +160,6 @@ fn render(
     primary_window: Query<&Window, With<PrimaryWindow>>,
 ) {
     let mut swapchain = swapchain.single_mut();
-
 
     // wait for the previous frame to finish
     unsafe {
@@ -184,7 +187,7 @@ fn render(
         );
 
         if let Some(compiled) = rt_pipelines.get(&render_config.rt_pipeline) {
-            if let Scene::Ready(tlas) = scene.into_inner() {
+            if scene.is_ready() {
                 // update the descriptor set
                 let render_target_image_binding = vk::DescriptorImageInfo::builder()
                     .image_layout(vk::ImageLayout::GENERAL)
@@ -199,7 +202,7 @@ fn render(
                     .build();
 
                 let mut p_acceleration_structure_write = vk::WriteDescriptorSetAccelerationStructureKHR::builder()
-                    .acceleration_structures(std::slice::from_ref(&tlas.handle))
+                    .acceleration_structures(std::slice::from_ref(&scene.tlas.handle))
                     .build();
 
                 let mut write_acceleration_structure = vk::WriteDescriptorSet::builder()
@@ -223,20 +226,28 @@ fn render(
                 {
                     let mut uniform_view = device.map_buffer(&mut render_resources.uniform_buffer);
                     let translation = Mat4::from_translation(Vec3::new(0.0, 0.0, -3.0));
-                    let rotation = Mat4::from_rotation_y(time.elapsed_seconds());
-                    uniform_view[0].inverse_view = (translation * rotation).inverse();
-                    uniform_view[0].inverse_proj =
-                        Mat4::perspective_rh(PI / 2.0, swapchain.width as f32 / swapchain.height as f32, 0.001, 100.0)
-                            .inverse();
+                    let mut rng = rand::thread_rng();
+                    let entropy = rng.next_u32();
+                    uniform_view[0] = UniformData {
+                        inverse_view: translation.inverse(),
+                        inverse_proj: Mat4::perspective_rh(PI / 2.3, swapchain.width as f32 / swapchain.height as f32, 0.001, 100.0).inverse(),
+                        entropy,
+                    };
                 }
+
+                let blas = blasses.single();
 
                 let push_constants = RaytracerRegisters {
                     uniform_buffer_address: render_resources.uniform_buffer.address,
+                    vertex_buffer_address: blas.vertex_buffer.address,
+                    index_buffer_address: blas.index_buffer.address,
                 };
                 device.device.cmd_push_constants(
                     cmd_buffer,
                     compiled.pipeline_layout,
-                    vk::ShaderStageFlags::RAYGEN_KHR,
+                    vk::ShaderStageFlags::RAYGEN_KHR
+                        | vk::ShaderStageFlags::CLOSEST_HIT_KHR
+                        | vk::ShaderStageFlags::MISS_KHR,
                     0,
                     bytemuck::bytes_of(&push_constants),
                 );

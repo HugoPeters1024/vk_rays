@@ -8,5 +8,6 @@ layout(location = 0) out vec4 oColor;
 
 void main() {
     oColor = texture(test, uv);
+    oColor.xyz /= oColor.w;
 }
 

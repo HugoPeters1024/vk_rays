@@ -13,6 +13,18 @@ pub struct Buffer<T> {
     marker: std::marker::PhantomData<T>,
 }
 
+impl<T> Default for Buffer<T> {
+    fn default() -> Self {
+        Buffer {
+            nr_elements: 0,
+            usage: vk::BufferUsageFlags::empty(),
+            handle: vk::Buffer::null(),
+            address: 0,
+            marker: std::marker::PhantomData,
+        }
+    }
+}
+
 pub struct BufferView<T> {
     pub nr_elements: u64,
     ptr: *mut T,
@@ -75,6 +87,15 @@ impl BufferProvider for RenderDevice {
     }
 
     fn create_buffer<T>(&self, nr_elements: u64, usage: vk::BufferUsageFlags, location: MemoryLocation) -> Buffer<T> {
+        if nr_elements == 0 {
+            return Buffer {
+                nr_elements,
+                usage,
+                handle: vk::Buffer::null(),
+                address: 0,
+                marker: std::marker::PhantomData,
+            };
+        }
         let buffer_info = vk::BufferCreateInfo::builder()
             .size(nr_elements * std::mem::size_of::<T>() as u64)
             .usage(usage);

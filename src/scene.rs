@@ -10,15 +10,16 @@ use crate::{
     vulkan_cleanup::{VkCleanup, VkCleanupEvent},
 };
 
-#[derive(Resource)]
-pub enum Scene {
-    Empty,
-    Ready(AccelerationStructure),
+#[derive(Resource, Default)]
+pub struct Scene {
+    pub tlas: AccelerationStructure,
+    scratch_buffer: Buffer<u8>,
+    instance_buffer: Buffer<vk::AccelerationStructureInstanceKHR>,
 }
 
-impl Default for Scene {
-    fn default() -> Self {
-        Scene::Empty
+impl Scene {
+    pub fn is_ready(&self) -> bool {
+        self.tlas.is_ready()
     }
 }
 
@@ -38,37 +39,38 @@ impl Plugin for ScenePlugin {
 
 fn update_scene(
     cleanup: Res<VkCleanup>,
-    mut should_rebuild: Local<bool>,
-    mut commands: Commands,
+    mut scene: ResMut<Scene>,
     device: Res<RenderDevice>,
-    meshes: Query<Ref<Handle<GltfMesh>>>,
+    meshes: Query<(&GlobalTransform, &Handle<GltfMesh>)>,
     blasses: Res<VulkanAssets<GltfMesh>>,
 ) {
-    if meshes.iter().any(|m| m.is_changed()) {
-        *should_rebuild = true;
-    }
-
-    if !*should_rebuild {
-        return;
-    }
-    println!("REBUILDING SCENE");
-
-    let mut resolved_blasses: Vec<&BLAS> = Vec::new();
-    for mesh in meshes.iter() {
+    let mut resolved_blasses: Vec<(&GlobalTransform, &BLAS)> = Vec::new();
+    for (t, mesh) in meshes.iter() {
         let Some(blas) = blasses.get(&mesh) else {
-            println!("No BLAS for mesh");
-            return;
+            continue;
         };
-        resolved_blasses.push(blas);
+        resolved_blasses.push((t, blas));
     }
-
-    *should_rebuild = false;
 
     let instances = resolved_blasses
-        .iter()
-        .map(|blas| {
+        .into_iter()
+        .map(|(transform, blas)| {
+            let columns = transform.affine().to_cols_array_2d();
             let transform = vk::TransformMatrixKHR {
-                matrix: [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+                matrix: [
+                    columns[0][0],
+                    columns[1][0],
+                    columns[2][0],
+                    columns[3][0],
+                    columns[0][1],
+                    columns[1][1],
+                    columns[2][1],
+                    columns[3][1],
+                    columns[0][2],
+                    columns[1][2],
+                    columns[2][2],
+                    columns[3][2],
+                ],
             };
 
             vk::AccelerationStructureInstanceKHR {
@@ -82,16 +84,27 @@ fn update_scene(
         })
         .collect::<Vec<_>>();
 
-    let mut instance_buffer = device.create_host_buffer::<vk::AccelerationStructureInstanceKHR>(
-        instances.len() as u64,
-        vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR,
-    );
+    if instances.is_empty() {
+        return;
+    }
 
-    let mut instance_buffer_view = device.map_buffer(&mut instance_buffer);
+    if instances.len() != scene.instance_buffer.nr_elements as usize {
+        println!("Scene: Resizing instance buffer to {} elements", instances.len());
+        cleanup.send(VkCleanupEvent::Buffer(scene.instance_buffer.handle));
+        scene.instance_buffer = device.create_host_buffer::<vk::AccelerationStructureInstanceKHR>(
+            instances.len() as u64,
+            vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR,
+        );
+    }
+
+    let mut instance_buffer_view = device.map_buffer(&mut scene.instance_buffer);
     for (i, instance) in instances.iter().enumerate() {
         instance_buffer_view[i] = instance.clone();
     }
     drop(instance_buffer_view);
+
+    // we always rebuild the tlas, better to destroy it before the underlying buffer
+    cleanup.send(VkCleanupEvent::AccelerationStructure(scene.tlas.handle));
 
     let geometry = vk::AccelerationStructureGeometryKHR::builder()
         .geometry_type(vk::GeometryTypeKHR::INSTANCES)
@@ -100,7 +113,7 @@ fn update_scene(
             instances: vk::AccelerationStructureGeometryInstancesDataKHR::builder()
                 .array_of_pointers(false)
                 .data(vk::DeviceOrHostAddressConstKHR {
-                    device_address: instance_buffer.address,
+                    device_address: scene.instance_buffer.address,
                 })
                 .build(),
         })
@@ -122,18 +135,22 @@ fn update_scene(
         )
     };
 
-    let acceleration_structure_buffer = device.create_device_buffer(
-        build_sizes.acceleration_structure_size,
-        vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR,
-    );
+    if build_sizes.acceleration_structure_size != scene.tlas.buffer.nr_elements {
+        println!("Scene: Resizing TLAS to {} bytes", build_sizes.acceleration_structure_size);
+        cleanup.send(VkCleanupEvent::Buffer(scene.tlas.buffer.handle));
+        scene.tlas.buffer = device.create_device_buffer(
+            build_sizes.acceleration_structure_size,
+            vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR,
+        );
+    }
 
     let acceleration_structure_info = vk::AccelerationStructureCreateInfoKHR::builder()
         .ty(vk::AccelerationStructureTypeKHR::TOP_LEVEL)
-        .buffer(acceleration_structure_buffer.handle)
+        .buffer(scene.tlas.buffer.handle)
         .size(build_sizes.acceleration_structure_size)
         .build();
 
-    let acceleration_structure = unsafe {
+    scene.tlas.handle = unsafe {
         device
             .exts
             .rt_acc_struct
@@ -141,17 +158,21 @@ fn update_scene(
     }
     .unwrap();
 
-    let scratch_buffer: Buffer<u8> =
-        device.create_device_buffer(build_sizes.build_scratch_size, vk::BufferUsageFlags::STORAGE_BUFFER);
+    if build_sizes.build_scratch_size != scene.scratch_buffer.nr_elements {
+        println!("Scene: Resizing scratch buffer to {} bytes", build_sizes.build_scratch_size);
+        cleanup.send(VkCleanupEvent::Buffer(scene.scratch_buffer.handle));
+        scene.scratch_buffer =
+            device.create_device_buffer(build_sizes.build_scratch_size, vk::BufferUsageFlags::STORAGE_BUFFER);
+    }
 
     let build_geometry = vk::AccelerationStructureBuildGeometryInfoKHR::builder()
         .ty(vk::AccelerationStructureTypeKHR::TOP_LEVEL)
         .flags(vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE)
         .mode(vk::BuildAccelerationStructureModeKHR::BUILD)
-        .dst_acceleration_structure(acceleration_structure)
+        .dst_acceleration_structure(scene.tlas.handle)
         .geometries(std::slice::from_ref(&geometry))
         .scratch_data(vk::DeviceOrHostAddressKHR {
-            device_address: scratch_buffer.address,
+            device_address: scene.scratch_buffer.address,
         });
 
     let build_range = vk::AccelerationStructureBuildRangeInfoKHR::builder()
@@ -172,27 +193,18 @@ fn update_scene(
         });
     }
 
-    let address = unsafe {
+    scene.tlas.address = unsafe {
         device.exts.rt_acc_struct.get_acceleration_structure_device_address(
             &vk::AccelerationStructureDeviceAddressInfoKHR::builder()
-                .acceleration_structure(acceleration_structure)
+                .acceleration_structure(scene.tlas.handle)
                 .build(),
         )
     };
-
-    cleanup.send(VkCleanupEvent::Buffer(scratch_buffer.handle));
-    cleanup.send(VkCleanupEvent::Buffer(instance_buffer.handle));
-
-    commands.insert_resource(Scene::Ready(AccelerationStructure {
-        handle: acceleration_structure,
-        buffer: acceleration_structure_buffer,
-        address,
-    }));
 }
 
 fn destroy_scene(scene: Res<Scene>, cleanup: Res<VkCleanup>) {
-    if let Scene::Ready(tlas) = scene.into_inner() {
-        cleanup.send(VkCleanupEvent::AccelerationStructure(tlas.handle));
-        cleanup.send(VkCleanupEvent::Buffer(tlas.buffer.handle));
-    }
+    cleanup.send(VkCleanupEvent::Buffer(scene.tlas.buffer.handle));
+    cleanup.send(VkCleanupEvent::AccelerationStructure(scene.tlas.handle));
+    cleanup.send(VkCleanupEvent::Buffer(scene.instance_buffer.handle));
+    cleanup.send(VkCleanupEvent::Buffer(scene.scratch_buffer.handle));
 }

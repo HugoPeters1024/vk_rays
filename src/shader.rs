@@ -1,4 +1,4 @@
-use std::{borrow::Cow, io::Cursor};
+use std::{borrow::Cow, io::Cursor, fs::read_to_string};
 
 use crate::render_device::*;
 use ash::{util::read_spv, vk};
@@ -52,6 +52,15 @@ impl AssetLoader for ShaderLoader {
             let mut options = shaderc::CompileOptions::new().unwrap();
             options.set_target_env(shaderc::TargetEnv::Vulkan, vk::make_api_version(0, 1, 3, 0));
             options.set_target_spirv(shaderc::SpirvVersion::V1_6);
+            options.set_include_callback(|fname,_type,_, _depth| {
+                let Ok(contents) = read_to_string(format!("./assets/shaders/{}", fname)) else {
+                    return Err(format!("Failed to read shader include: {}", fname));
+                };
+                Ok(shaderc::ResolvedInclude {
+                    resolved_name: fname.to_string(),
+                    content: contents,
+                })
+            });
 
             let binary_result = self.compiler.compile_into_spirv(
                 std::str::from_utf8(bytes).unwrap(),

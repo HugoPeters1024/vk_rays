@@ -1,10 +1,13 @@
 #version 460
 #extension GL_EXT_ray_tracing : enable
 
-layout(location = 0) rayPayloadInEXT vec3 hitValue;
+layout(location = 0) rayPayloadInEXT Payload {
+  vec3 normal;
+  float t;
+} payload;
 
 void main()
 {
-    hitValue = vec3(0.3, 0.3, 0.2);
+  payload.t = 0.0;
 }
 

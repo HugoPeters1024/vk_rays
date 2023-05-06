@@ -27,7 +27,7 @@ pub enum VkCleanupEvent {
 
 impl VkCleanupEvent {
     fn execute(self, device: &RenderDevice) {
-        println!("Executing cleanup event: {:?}", self);
+        //println!("Executing cleanup event: {:?}", self);
         match self {
             VkCleanupEvent::DescriptorSetLayout(layout) => unsafe {
                 device.device.destroy_descriptor_set_layout(layout, None);
@@ -141,12 +141,6 @@ fn vulkan_cleanup_worker(device: RenderDevice, recv: Receiver<VkCleanupEvent>) {
             }
             VkCleanupEvent::SignalNextFrame => {
                 let mut events = cycle_buffer.pop_front().unwrap();
-                if events.len() > 0 {
-                    println!(
-                        "Vulkan cleanup thread received next frame signal, flushing {} old events",
-                        events.len()
-                    );
-                }
                 for event in events.drain(..) {
                     event.execute(&device);
                 }

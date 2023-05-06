@@ -9,8 +9,10 @@ use crate::{
 };
 
 #[repr(C)]
+#[repr(align(16))]
 pub struct Vertex {
-    pub pos: [f32; 3],
+    pub pos: [f32; 4],
+    pub normal: [f32; 4],
 }
 
 pub struct BLAS {
@@ -25,6 +27,7 @@ impl BLAS {
     }
 }
 
+#[derive(Default)]
 pub struct AccelerationStructure {
     pub handle: vk::AccelerationStructureKHR,
     pub buffer: Buffer<u8>,
@@ -36,6 +39,10 @@ impl AccelerationStructure {
         vk::AccelerationStructureReferenceKHR {
             device_handle: self.address,
         }
+    }
+
+    pub fn is_ready(&self) -> bool {
+        self.handle != vk::AccelerationStructureKHR::null()
     }
 }
 
@@ -264,7 +271,18 @@ fn extract_mesh_data(gltf: &GltfMesh, vertex_buffer: &mut [Vertex], index_buffer
         assert!(pos_reader.len() == geometry.vertex_count);
 
         for (i, pos) in pos_reader.enumerate() {
-            vertex_buffer[geometry.first_vertex + i] = Vertex { pos };
+            vertex_buffer[geometry.first_vertex + i].pos[0] = pos[0];
+            vertex_buffer[geometry.first_vertex + i].pos[1] = pos[1];
+            vertex_buffer[geometry.first_vertex + i].pos[2] = pos[2];
+        }
+
+        let normal_reader = reader.read_normals().unwrap();
+        assert!(normal_reader.len() == geometry.vertex_count);
+
+        for (i, normal) in normal_reader.enumerate() {
+            vertex_buffer[geometry.first_vertex + i].normal[0] = normal[0];
+            vertex_buffer[geometry.first_vertex + i].normal[1] = normal[1];
+            vertex_buffer[geometry.first_vertex + i].normal[2] = normal[2];
         }
 
         let index_reader = reader.read_indices().unwrap().into_u32();

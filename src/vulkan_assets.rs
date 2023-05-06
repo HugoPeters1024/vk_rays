@@ -45,6 +45,11 @@ impl<T: VulkanAsset> VulkanAssets<T> {
     pub fn get(&self, handle: &Handle<T>) -> Option<&T::PreparedAsset> {
         self.lookup.get(&handle.id())
     }
+
+    pub fn single(&self) -> &T::PreparedAsset {
+        assert_eq!(self.lookup.len(), 1);
+        self.lookup.values().next().unwrap()
+    }
 }
 
 #[derive(Default)]
