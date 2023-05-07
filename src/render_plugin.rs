@@ -232,7 +232,7 @@ fn render(
                     let (_, rotation, translation) = camera_g_transform.to_scale_rotation_translation();
                     let camera_view = Mat4::from_quat(rotation) * Mat4::from_translation(translation);
                     let projection = Mat4::perspective_rh(camera.fov, swapchain.width as f32 / swapchain.height as f32, camera.min_t, camera.max_t);
-                    let entropy = if camera_transform.is_changed() { 666 } else { rng.next_u32() };
+                    let entropy = if camera.clear { 666 } else { rng.next_u32() };
                     uniform_view[0] = UniformData {
                         inverse_view: camera_view.inverse(),
                         inverse_proj: projection.inverse(),

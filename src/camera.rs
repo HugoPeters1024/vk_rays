@@ -7,6 +7,7 @@ pub struct Camera3d {
     pub fov: f32,
     pub min_t: f32,
     pub max_t: f32,
+    pub clear: bool,
 }
 
 impl Default for Camera3d {
@@ -15,6 +16,7 @@ impl Default for Camera3d {
             fov: PI / 2.2,
             min_t: 0.001,
             max_t: 100.0,
+            clear: true,
         }
     }
 }

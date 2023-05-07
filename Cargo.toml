@@ -9,16 +9,9 @@ edition = "2021"
 ash = "0.37.2"
 ash-window = "0.12.0"
 gpu-allocator = "0.22.0"
-bevy = { version = "0.10.0", default-features = false, features = [
-  "bevy_asset",
-  "debug_asset_server",
-  "x11",
-  "bevy_winit",
-  "filesystem_watcher",
-] }
+bevy = { version = "0.10.0", features = ["debug_asset_server"] }
 shaderc = "0.8.2"
 shaderc-sys = "0.8.2"
-bevy_mod_debugdump = "0.7.0"
 clap = { version = "4.2.1", features = ["derive"] }
 bytemuck = "1.13.1"
 bytemuck_derive = "1.4.1"
@@ -26,6 +19,8 @@ crossbeam-channel = "0.5.8"
 winit = "0.28.3"
 gltf = "1.1.0"
 rand = "0.8.5"
+bevy_rapier3d = { version = "0.21.0", default-features = false, features = ["dim3", "async-collider"] }
+regex = "1.8.1"
 
 # Enable a small amount of optimization in debug mode
 [profile.dev]

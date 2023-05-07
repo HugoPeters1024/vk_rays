@@ -16,8 +16,12 @@ mod vk_utils;
 mod vulkan_assets;
 mod vulkan_cleanup;
 
-use bevy::log::LogPlugin;
+use std::f32::consts::PI;
+use std::time::Duration;
+
 use bevy::prelude::*;
+use bevy::time::common_conditions::on_timer;
+use bevy_rapier3d::prelude::*;
 use camera::{Camera3d, Camera3dBundle};
 use clap::Parser;
 use gltf_assets::GltfMesh;
@@ -45,15 +49,36 @@ struct MainBlock;
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins.set(AssetPlugin {
+        .add_plugin(bevy::log::LogPlugin::default())
+        .add_plugin(bevy::core::TaskPoolPlugin::default())
+        .add_plugin(bevy::core::TypeRegistrationPlugin::default())
+        .add_plugin(bevy::core::FrameCountPlugin::default())
+        .add_plugin(bevy::time::TimePlugin::default())
+        .add_plugin(bevy::transform::TransformPlugin::default())
+        .add_plugin(bevy::hierarchy::HierarchyPlugin::default())
+        .add_plugin(bevy::diagnostic::DiagnosticsPlugin::default())
+        .add_plugin(bevy::input::InputPlugin::default())
+        .add_plugin(bevy::window::WindowPlugin::default())
+        .add_plugin(bevy::a11y::AccessibilityPlugin)
+        .add_plugin(bevy::asset::AssetPlugin {
             watch_for_changes: true,
             ..default()
-        }))
+        })
+        .add_plugin(bevy::asset::debug_asset_server::DebugAssetServerPlugin::default())
+        .add_plugin(bevy::winit::WinitPlugin::default())
+        .add_plugin(bevy::scene::ScenePlugin::default())
+        .add_asset::<bevy::render::mesh::Mesh>()
         .add_plugin(RenderPlugin)
+        .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
+        .insert_resource(RapierConfiguration {
+            gravity: Vec3::new(0.0, -9.81, 0.0),
+            ..default()
+        })
         .add_startup_system(startup)
+        .add_system(camera_clear)
         .add_system(report_fps)
         .add_system(player_controls)
-        .add_system(spawn)
+        .add_system(spawn.run_if(on_timer(Duration::from_secs_f32(0.05))))
         .run();
 
     std::thread::sleep(std::time::Duration::from_millis(300));
@@ -75,12 +100,12 @@ fn startup(
         box_mesh: assets.load("models/box.glb"),
     };
 
+    // floor
     commands.spawn((
         game_assets.box_mesh.clone(),
-        TransformBundle::from_transform(Transform::from_rotation(
-            Quat::from_rotation_y(0.7) * Quat::from_rotation_x(0.5),
-        )),
-        MainBlock,
+        TransformBundle::from_transform(Transform::from_xyz(0.0, -1.0, 0.0).with_scale(Vec3::new(100.0, 0.2, 100.0))),
+        RigidBody::Fixed,
+        Collider::cuboid(0.5, 0.5, 0.5),
     ));
 
     let raygen_shader: Handle<Shader> = assets.load("shaders/raygen.rgen");
@@ -113,7 +138,7 @@ fn startup(
 
 fn report_fps(time: Res<Time>) {
     let mut rng = rand::thread_rng();
-    if rng.next_u32() % 100 == 0 {
+    if rng.next_u32() % 10000 == 0 {
         println!("FPS: {}", 1.0 / time.delta_seconds());
     }
 }
@@ -122,24 +147,34 @@ fn player_controls(input: Res<Input<KeyCode>>, time: Res<Time>, mut camera: Quer
     let mut camera = camera.single_mut();
     let f = time.delta_seconds();
 
-    let mut direction = Vec3::ZERO;
+    // construct a vec3 that indicates the direction the player is looking
+    let look_dir = camera.rotation.inverse() * Vec3::new(0.0, 0.0, 1.0);
+
+    let sideways = Vec3::cross(look_dir, Vec3::Y);
+
+
     if input.pressed(KeyCode::W) {
-        direction += camera.local_z();
+        camera.translation += look_dir * f;
     }
+
     if input.pressed(KeyCode::S) {
-        direction -= camera.local_z();
+        camera.translation -= look_dir * f;
     }
+
     if input.pressed(KeyCode::A) {
-        direction += camera.local_x();
+        camera.translation -= sideways * f;
     }
+
     if input.pressed(KeyCode::D) {
-        direction -= camera.local_x();
+        camera.translation += sideways * f;
     }
+
     if input.pressed(KeyCode::Q) {
-        direction -= camera.local_y();
+        camera.translation -= Vec3::Y * f;
     }
+
     if input.pressed(KeyCode::E) {
-        direction += camera.local_y();
+        camera.translation += Vec3::Y * f;
     }
 
     if input.pressed(KeyCode::Left) {
@@ -149,18 +184,27 @@ fn player_controls(input: Res<Input<KeyCode>>, time: Res<Time>, mut camera: Quer
     if input.pressed(KeyCode::Right) {
         camera.rotation *= Quat::from_rotation_y(f);
     }
+}
 
-    if direction.length_squared() > 0.0 {
-        camera.translation += direction.normalize() * 3.0 * f;
+fn camera_clear(input: Res<Input<KeyCode>>, mut q: Query<&mut Camera3d>) {
+    let mut camera = q.single_mut();
+    if input.just_pressed(KeyCode::Space) {
+        camera.clear = !camera.clear;
     }
 }
 
-fn spawn(mut commands: Commands, game_assets: Res<GameAssets>, time: Res<Time>, mut done: Local<bool>) {
-    if !*done && time.elapsed_seconds() > 0.0 {
+fn spawn(mut commands: Commands, game_assets: Res<GameAssets>, q: Query<&MainBlock>) {
+    if q.iter().count() <  500 {
         commands.spawn((
             game_assets.box_mesh.clone(),
-            TransformBundle::from_transform(Transform::from_xyz(0.0, 0.9, 0.0).with_scale(Vec3::new(10.0, 0.2, 10.0))),
+            TransformBundle::from_transform(
+                Transform::default()
+                    .with_rotation(Quat::from_rotation_y(PI / 2.0))
+                    .with_translation(Vec3::new(rand::random::<f32>() * 10.0 - 5.0, 3.0, rand::random::<f32>() * 10.0 - 5.0)),
+            ),
+            MainBlock,
+            RigidBody::Dynamic,
+            Collider::cuboid(0.5, 0.5, 0.5),
         ));
-        *done = true;
     }
 }

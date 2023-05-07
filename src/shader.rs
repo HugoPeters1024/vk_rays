@@ -1,5 +1,6 @@
-use std::{borrow::Cow, io::Cursor, fs::read_to_string};
+use std::{borrow::Cow, io::Cursor, fs::read_to_string, path::PathBuf, str::FromStr};
 
+use regex::Regex;
 use crate::render_device::*;
 use ash::{util::read_spv, vk};
 use bevy::{
@@ -35,9 +36,9 @@ impl AssetLoader for ShaderLoader {
     ) -> bevy::utils::BoxedFuture<'a, Result<(), bevy::asset::Error>> {
         Box::pin(async move {
             println!("Compiling shader: {:?}", load_context.path());
-            let ext = load_context.path().extension().unwrap().to_str().unwrap();
+            let ext = load_context.path().extension().unwrap().to_str().unwrap().to_string();
 
-            let Some(kind) = (match ext {
+            let Some(kind) = (match ext.as_str() {
                 "vert" => Some(shaderc::ShaderKind::Vertex),
                 "frag" => Some(shaderc::ShaderKind::Fragment),
                 "comp" => Some(shaderc::ShaderKind::Compute),
@@ -52,10 +53,13 @@ impl AssetLoader for ShaderLoader {
             let mut options = shaderc::CompileOptions::new().unwrap();
             options.set_target_env(shaderc::TargetEnv::Vulkan, vk::make_api_version(0, 1, 3, 0));
             options.set_target_spirv(shaderc::SpirvVersion::V1_6);
+
             options.set_include_callback(|fname,_type,_, _depth| {
-                let Ok(contents) = read_to_string(format!("./assets/shaders/{}", fname)) else {
+                let full_path = format!("./assets/shaders/{}", fname);
+                let Ok(contents) = read_to_string(full_path.clone()) else {
                     return Err(format!("Failed to read shader include: {}", fname));
                 };
+
                 Ok(shaderc::ResolvedInclude {
                     resolved_name: fname.to_string(),
                     content: contents,
@@ -80,13 +84,14 @@ impl AssetLoader for ShaderLoader {
                 spirv: Vec::from(binary.as_binary_u8()).into(),
             };
 
-            load_context.set_default_asset(LoadedAsset::new(shader));
+            let asset = LoadedAsset::new(shader);
+            load_context.set_default_asset(asset);
             Ok(())
         })
     }
 
     fn extensions(&self) -> &[&str] {
-        &["comp", "vert", "frag", "rgen", "rchit", "rmiss"]
+        &["comp", "vert", "frag", "rgen", "rchit", "rmiss", "glsl"]
     }
 }
 

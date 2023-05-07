@@ -7,7 +7,14 @@ layout (set=0, binding=0) uniform sampler2D test;
 layout(location = 0) out vec4 oColor;
 
 void main() {
-    oColor = texture(test, uv);
-    oColor.xyz /= oColor.w;
+    const float gamma = 2.2f;
+    const float exposure = 7.7f;
+
+    vec4 bufferVal = texture(test, uv);
+
+    vec3 hdrColor = bufferVal.xyz / bufferVal.w;
+    vec3 mapped = pow(vec3(1.0f) - exp(-hdrColor * exposure), vec3(1.0f / gamma));
+
+    oColor = vec4(mapped, 1.0f);
 }
 

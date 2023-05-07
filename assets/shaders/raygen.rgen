@@ -2,7 +2,6 @@
 #extension GL_EXT_buffer_reference : enable
 #extension GL_EXT_ray_tracing : enable
 #extension GL_EXT_nonuniform_qualifier : enable
-
 #include "common.glsl"
 
 struct Vertex {
@@ -39,6 +38,8 @@ layout(location = 0) rayPayloadEXT Payload {
   vec3 normal;
   float t;
   vec3 color;
+  uint id;
+  vec3 emission;
 } payload;
 
 uint getSeed() {
@@ -61,7 +62,8 @@ void main() {
 
   vec3 accum = vec3(0.0);
 
-  uint MAX_SAMPLES = 1;
+  uint MAX_SAMPLES = 4;
+  const float BRDF = 2 * PI;
 
   for(uint s=0; s<MAX_SAMPLES; s++) {
     vec3 origin = start_origin;
@@ -70,15 +72,25 @@ void main() {
 
     for (uint bounce=0; bounce<8; bounce++) {
       traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xFF, 0, 0, 0, origin, tmin, direction, tmax, 0);
+
       if (payload.t == 0.0) {
-        accum += mask * vec3(0.6);
+        accum += mask * payload.color;
         break;
       }
 
+      accum += mask * payload.emission;
+
       origin = origin + direction * (payload.t - EPS);
-      direction = SampleHemisphereCosine(payload.normal);
-      vec3 color = payload.color;
-      mask = mask * color;
+
+      vec3 sample_dir = alignSampleVector(SampleHemisphereCosine(), vec3(0,0,1), payload.normal);
+
+      if (payload.id == 3) {
+        direction = mix(reflect(direction, payload.normal), sample_dir, 0.00);
+      } else {
+        direction = alignSampleVector(SampleHemisphereCosine(), vec3(0,0,1), payload.normal);
+      }
+
+      mask *= payload.color;
     }
   }
 

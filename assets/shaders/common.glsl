@@ -26,6 +26,11 @@ uint wang_hash(in uint seed)
 
 uint g_seed = 22;
 
+uint rand() {
+    g_seed = rand_xorshift(g_seed);
+    return g_seed;
+}
+
 float randf()
 {
     g_seed = rand_xorshift(g_seed);
@@ -49,24 +54,34 @@ mat3 rotationMatrix(vec3 axis, float angle)
                 oc * axis.z * axis.x - axis.y * s,  oc * axis.y * axis.z + axis.x * s,  oc * axis.z * axis.z + c);
 }
 
-vec3 AlignToNormalZUp(in vec3 v, in vec3 normal) {
-  const vec3 UP = vec3(0,0,1);
-
-  const float up_dot_normal = dot(UP, normal);
-
-  if (up_dot_normal > 0.999) {
-    return v;
-  } else if (up_dot_normal < -0.999) {
-    return -v;
-  }
-
-
-  const float angle = acos(dot(UP, normal));
-  const vec3 axis = cross(UP, normal);
-  return rotationMatrix(axis, angle) * v;
+mat3 AlignToNormalM(in vec3 normal) {
+    const vec3 w = normal;
+    const vec3 u = normalize(cross((abs(w.x) > .1f ? vec3(0, 1, 0) : vec3(1, 0, 0)), w));
+    const vec3 v = normalize(cross(w,u));
+    return mat3(u, v, w);
 }
 
-vec3 SampleHemisphereCosine(in vec3 normal)
+vec3 alignSampleVector(in vec3 s, in vec3 up, in vec3 normal)
+{
+  if (dot(up, normal) > 0.999f) {
+    return s;
+  } 
+
+  if (dot(up, normal) < -0.999f) {
+    return -s;
+  }
+
+  float angle = acos(dot(up, normal));
+  vec3 axis = cross(up, normal);
+  return s * rotationMatrix(axis, angle);
+}
+
+vec3 AlignToNormal(in vec3 normal, in vec3 i) {
+    return AlignToNormalM(normal) * i;
+}
+
+
+vec3 SampleHemisphereCosine()
 {
     float r0 = randf();
     float r1 = randf();
@@ -74,8 +89,14 @@ vec3 SampleHemisphereCosine(in vec3 normal)
     const float theta = 2.0f * PI * r1;
     const float x = r * cos(theta);
     const float y = r * sin(theta);
-    const vec3 ret = vec3(x, y, sqrt(1.0f - r0));
-    return AlignToNormalZUp(normal, ret);
+    return vec3(x, y, sqrt(1.0f - r0));
+}
+
+vec3 hsv2rgb(vec3 c)
+{
+    vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+    vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
 }
 
 
