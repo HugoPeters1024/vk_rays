@@ -1,4 +1,5 @@
 mod acceleration_structure;
+mod camera;
 mod composed_asset;
 mod gltf_assets;
 mod initializers;
@@ -15,14 +16,12 @@ mod vk_utils;
 mod vulkan_assets;
 mod vulkan_cleanup;
 
-use std::time::Duration;
-
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
-use bevy::time::common_conditions::on_fixed_timer;
-use bevy::window::PresentMode;
+use camera::{Camera3d, Camera3dBundle};
 use clap::Parser;
 use gltf_assets::GltfMesh;
+use rand::RngCore;
 use rasterization_pipeline::RasterizationPipeline;
 use render_plugin::RenderConfig;
 use shader::Shader;
@@ -45,34 +44,18 @@ struct GameAssets {
 struct MainBlock;
 
 fn main() {
-    let args = Cli::parse();
+    App::new()
+        .add_plugins(DefaultPlugins.set(AssetPlugin {
+            watch_for_changes: true,
+            ..default()
+        }))
+        .add_plugin(RenderPlugin)
+        .add_startup_system(startup)
+        .add_system(report_fps)
+        .add_system(player_controls)
+        .add_system(spawn)
+        .run();
 
-    let mut app = App::new();
-    if args.dump_schedule {
-        app.add_plugins(DefaultPlugins.build().disable::<LogPlugin>());
-    } else {
-        app.add_plugins(
-            DefaultPlugins
-                .set(AssetPlugin {
-                    watch_for_changes: true,
-                    ..default()
-                }),
-        );
-    }
-
-    app.add_plugin(RenderPlugin).add_startup_system(startup);
-
-    app.add_system(report_fps.run_if(on_fixed_timer(Duration::from_secs(1))));
-    app.add_system(step);
-    app.add_system(spawn);
-
-    if args.dump_schedule {
-        bevy_mod_debugdump::print_main_schedule(&mut app);
-    } else {
-        app.run();
-    }
-
-    drop(app);
     std::thread::sleep(std::time::Duration::from_millis(300));
     println!("Goodbye!");
 }
@@ -83,6 +66,11 @@ fn startup(
     mut rt_pipelines: ResMut<Assets<RaytracingPipeline>>,
     mut rast_pipelines: ResMut<Assets<RasterizationPipeline>>,
 ) {
+    commands.spawn(Camera3dBundle {
+        transform: Transform::from_xyz(0.0, 0.0, -3.0),
+        ..default()
+    });
+
     let game_assets = GameAssets {
         box_mesh: assets.load("models/box.glb"),
     };
@@ -124,12 +112,46 @@ fn startup(
 }
 
 fn report_fps(time: Res<Time>) {
-    println!("FPS: {}", 1.0 / time.delta_seconds());
+    let mut rng = rand::thread_rng();
+    if rng.next_u32() % 100 == 0 {
+        println!("FPS: {}", 1.0 / time.delta_seconds());
+    }
 }
 
-fn step(mut q: Query<&mut Transform, With<MainBlock>>) {
-    for mut transform in q.iter_mut() {
-        transform.rotate(Quat::from_rotation_y(0.01));
+fn player_controls(input: Res<Input<KeyCode>>, time: Res<Time>, mut camera: Query<&mut Transform, With<Camera3d>>) {
+    let mut camera = camera.single_mut();
+    let f = time.delta_seconds();
+
+    let mut direction = Vec3::ZERO;
+    if input.pressed(KeyCode::W) {
+        direction += camera.local_z();
+    }
+    if input.pressed(KeyCode::S) {
+        direction -= camera.local_z();
+    }
+    if input.pressed(KeyCode::A) {
+        direction += camera.local_x();
+    }
+    if input.pressed(KeyCode::D) {
+        direction -= camera.local_x();
+    }
+    if input.pressed(KeyCode::Q) {
+        direction -= camera.local_y();
+    }
+    if input.pressed(KeyCode::E) {
+        direction += camera.local_y();
+    }
+
+    if input.pressed(KeyCode::Left) {
+        camera.rotation *= Quat::from_rotation_y(-f);
+    }
+
+    if input.pressed(KeyCode::Right) {
+        camera.rotation *= Quat::from_rotation_y(f);
+    }
+
+    if direction.length_squared() > 0.0 {
+        camera.translation += direction.normalize() * 3.0 * f;
     }
 }
 

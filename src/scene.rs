@@ -54,7 +54,8 @@ fn update_scene(
 
     let instances = resolved_blasses
         .into_iter()
-        .map(|(transform, blas)| {
+        .enumerate()
+        .map(|(i, (transform, blas))| {
             let columns = transform.affine().to_cols_array_2d();
             let transform = vk::TransformMatrixKHR {
                 matrix: [
@@ -75,7 +76,7 @@ fn update_scene(
 
             vk::AccelerationStructureInstanceKHR {
                 transform,
-                instance_custom_index_and_mask: Packed24_8::new(0, 0xFF),
+                instance_custom_index_and_mask: Packed24_8::new(i as u32, 0xFF),
                 instance_shader_binding_table_record_offset_and_flags: Packed24_8::new(
                     0, 0b1, //vk::GeometryInstanceFlagsKHR::TRIANGLE_FACING_CULL_DISABLE,
                 ),

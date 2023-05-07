@@ -38,6 +38,7 @@ layout(push_constant, std430) uniform Registers {
 layout(location = 0) rayPayloadEXT Payload {
   vec3 normal;
   float t;
+  vec3 color;
 } payload;
 
 uint getSeed() {
@@ -60,7 +61,7 @@ void main() {
 
   vec3 accum = vec3(0.0);
 
-  uint MAX_SAMPLES = 16;
+  uint MAX_SAMPLES = 1;
 
   for(uint s=0; s<MAX_SAMPLES; s++) {
     vec3 origin = start_origin;
@@ -76,10 +77,11 @@ void main() {
 
       origin = origin + direction * (payload.t - EPS);
       direction = SampleHemisphereCosine(payload.normal);
-      mask = mask * vec3(0.2, 0.6, 0.8);
+      vec3 color = payload.color;
+      mask = mask * color;
     }
   }
 
-  vec4 old_image = vec4(0);//imageLoad(render_target, ivec2(gl_LaunchIDEXT.xy));
+  vec4 old_image = regs.un.entropy == 666 ? vec4(0) : imageLoad(render_target, ivec2(gl_LaunchIDEXT.xy));
   imageStore(render_target, ivec2(gl_LaunchIDEXT.xy), old_image + vec4(accum, float(MAX_SAMPLES)));
 }

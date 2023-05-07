@@ -31,6 +31,7 @@ layout(push_constant, std430) uniform Registers {
 layout(location = 0) rayPayloadInEXT Payload {
   vec3 normal;
   float t;
+  vec3 color;
 } payload;
 
 hitAttributeEXT vec2 attribs;
@@ -47,6 +48,11 @@ void main()
   const vec3 world_normal = normalize((gl_ObjectToWorldEXT * vec4(normal, 0.0)).xyz);
 
   payload.normal = world_normal;
+  payload.color = vec3(0.5f, 0.5f, 0.0f);
+  if (gl_InstanceCustomIndexEXT == 0) {
+    // set color to light blue
+    payload.color = vec3(0.0f, 1.0f, 1.0f);
+  }
   payload.t = gl_HitTEXT;
 }
 

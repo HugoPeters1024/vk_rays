@@ -1,6 +1,7 @@
 use std::f32::consts::PI;
 
 use crate::acceleration_structure::BLAS;
+use crate::camera::Camera3d;
 use crate::gltf_assets::GltfMesh;
 use crate::rasterization_pipeline::{RasterizationPipeline, RasterizationPipelinePlugin};
 use crate::raytracing_pipeline::{RaytracerRegisters, RaytracingPipeline, RaytracingPlugin};
@@ -158,8 +159,10 @@ fn render(
     rt_pipelines: Res<VulkanAssets<RaytracingPipeline>>,
     rast_pipelines: Res<VulkanAssets<RasterizationPipeline>>,
     primary_window: Query<&Window, With<PrimaryWindow>>,
+    camera: Query<(&Camera3d, Ref<Transform>, &GlobalTransform)>,
 ) {
     let mut swapchain = swapchain.single_mut();
+    let (camera, camera_transform, camera_g_transform) = camera.single();
 
     // wait for the previous frame to finish
     unsafe {
@@ -225,12 +228,14 @@ fn render(
 
                 {
                     let mut uniform_view = device.map_buffer(&mut render_resources.uniform_buffer);
-                    let translation = Mat4::from_translation(Vec3::new(0.0, 0.0, -3.0));
                     let mut rng = rand::thread_rng();
-                    let entropy = rng.next_u32();
+                    let (_, rotation, translation) = camera_g_transform.to_scale_rotation_translation();
+                    let camera_view = Mat4::from_quat(rotation) * Mat4::from_translation(translation);
+                    let projection = Mat4::perspective_rh(camera.fov, swapchain.width as f32 / swapchain.height as f32, camera.min_t, camera.max_t);
+                    let entropy = if camera_transform.is_changed() { 666 } else { rng.next_u32() };
                     uniform_view[0] = UniformData {
-                        inverse_view: translation.inverse(),
-                        inverse_proj: Mat4::perspective_rh(PI / 2.3, swapchain.width as f32 / swapchain.height as f32, 0.001, 100.0).inverse(),
+                        inverse_view: camera_view.inverse(),
+                        inverse_proj: projection.inverse(),
                         entropy,
                     };
                 }
