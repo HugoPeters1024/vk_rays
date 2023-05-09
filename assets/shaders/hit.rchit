@@ -60,7 +60,7 @@ void main()
   }
 
   if (gl_InstanceCustomIndexEXT % 21 == 2) {
-    payload.emission = payload.color * 2.0;
+    payload.emission = payload.color * 20.0;
   } else {
     payload.emission = vec3(0);
   }

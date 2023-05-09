@@ -78,7 +78,7 @@ fn main() {
         .add_system(camera_clear)
         .add_system(report_fps)
         .add_system(player_controls)
-        .add_system(spawn.run_if(on_timer(Duration::from_secs_f32(0.05))))
+        .add_system(spawn.run_if(on_timer(Duration::from_secs_f32(0.02))))
         .run();
 
     std::thread::sleep(std::time::Duration::from_millis(300));

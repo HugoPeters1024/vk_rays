@@ -90,7 +90,7 @@ fn update_scene(
     }
 
     if instances.len() != scene.instance_buffer.nr_elements as usize {
-        println!("Scene: Resizing instance buffer to {} elements", instances.len());
+        //println!("Scene: Resizing instance buffer to {} elements", instances.len());
         cleanup.send(VkCleanupEvent::Buffer(scene.instance_buffer.handle));
         scene.instance_buffer = device.create_host_buffer::<vk::AccelerationStructureInstanceKHR>(
             instances.len() as u64,
@@ -137,7 +137,7 @@ fn update_scene(
     };
 
     if build_sizes.acceleration_structure_size != scene.tlas.buffer.nr_elements {
-        println!("Scene: Resizing TLAS to {} bytes", build_sizes.acceleration_structure_size);
+        //println!("Scene: Resizing TLAS to {} bytes", build_sizes.acceleration_structure_size);
         cleanup.send(VkCleanupEvent::Buffer(scene.tlas.buffer.handle));
         scene.tlas.buffer = device.create_device_buffer(
             build_sizes.acceleration_structure_size,
@@ -160,7 +160,7 @@ fn update_scene(
     .unwrap();
 
     if build_sizes.build_scratch_size != scene.scratch_buffer.nr_elements {
-        println!("Scene: Resizing scratch buffer to {} bytes", build_sizes.build_scratch_size);
+        //println!("Scene: Resizing scratch buffer to {} bytes", build_sizes.build_scratch_size);
         cleanup.send(VkCleanupEvent::Buffer(scene.scratch_buffer.handle));
         scene.scratch_buffer =
             device.create_device_buffer(build_sizes.build_scratch_size, vk::BufferUsageFlags::STORAGE_BUFFER);

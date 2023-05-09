@@ -12,7 +12,7 @@ layout(location = 0) rayPayloadInEXT Payload {
 void main()
 {
   payload.t = 0.0;
-  payload.color = vec3(0.03, 0.03, 0.05) * 0.01;
+  payload.color = vec3(0.03, 0.03, 0.05);
   payload.emission = vec3(0);
 }
 
