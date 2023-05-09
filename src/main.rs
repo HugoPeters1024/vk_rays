@@ -109,14 +109,18 @@ fn startup(
     ));
 
     let raygen_shader: Handle<Shader> = assets.load("shaders/raygen.rgen");
-    let hit_shader: Handle<Shader> = assets.load("shaders/hit.rchit");
+    let triangle_hit_shader: Handle<Shader> = assets.load("shaders/hit.rchit");
     let miss_shader: Handle<Shader> = assets.load("shaders/miss.rmiss");
+    let sphere_int_shader: Handle<Shader> = assets.load("shaders/sphere.rint");
+    let sphere_hit_shader: Handle<Shader> = assets.load("shaders/sphere.rchit");
+
 
     let rt_pipeline = rt_pipelines.add(RaytracingPipeline {
         raygen_shader: raygen_shader.clone(),
-        hit_shader: hit_shader.clone(),
+        triangle_hit_shader: triangle_hit_shader.clone(),
         miss_shader: miss_shader.clone(),
-        ..default()
+        sphere_int_shader,
+        sphere_hit_shader,
     });
 
     let vs_shader: Handle<Shader> = assets.load("shaders/quad.vert");

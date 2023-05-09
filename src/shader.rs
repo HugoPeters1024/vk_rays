@@ -43,6 +43,7 @@ impl AssetLoader for ShaderLoader {
                 "frag" => Some(shaderc::ShaderKind::Fragment),
                 "comp" => Some(shaderc::ShaderKind::Compute),
                 "rgen" => Some(shaderc::ShaderKind::RayGeneration),
+                "rint" => Some(shaderc::ShaderKind::Intersection),
                 "rchit" => Some(shaderc::ShaderKind::ClosestHit),
                 "rmiss" => Some(shaderc::ShaderKind::Miss),
                 _ => None,
@@ -91,7 +92,7 @@ impl AssetLoader for ShaderLoader {
     }
 
     fn extensions(&self) -> &[&str] {
-        &["comp", "vert", "frag", "rgen", "rchit", "rmiss", "glsl"]
+        &["comp", "vert", "frag", "rgen", "rchit", "rint", "rmiss", "glsl"]
     }
 }
 

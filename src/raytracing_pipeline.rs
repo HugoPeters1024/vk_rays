@@ -18,25 +18,34 @@ pub struct RaytracerRegisters {
     pub uniform_buffer_address: u64,
     pub vertex_buffer_address: u64,
     pub index_buffer_address: u64,
+    pub sphere_buffer_address: u64,
 }
 
-#[derive(Default, TypeUuid)]
+#[derive(TypeUuid)]
 #[uuid = "a0b0c0d0-e0f0-11ea-87d0-0242ac130003"]
 pub struct RaytracingPipeline {
     pub raygen_shader: Handle<Shader>,
-    pub hit_shader: Handle<Shader>,
     pub miss_shader: Handle<Shader>,
+    pub triangle_hit_shader: Handle<Shader>,
+    pub sphere_int_shader: Handle<Shader>,
+    pub sphere_hit_shader: Handle<Shader>,
 }
 
 impl ComposedAsset for RaytracingPipeline {
     type DepType = Shader;
     fn get_deps(&self) -> Vec<&Handle<Self::DepType>> {
-        vec![&self.raygen_shader, &self.hit_shader, &self.miss_shader]
+        vec![
+            &self.raygen_shader,
+            &self.triangle_hit_shader,
+            &self.miss_shader,
+            &self.sphere_int_shader,
+            &self.sphere_hit_shader,
+        ]
     }
 }
 
 impl VulkanAsset for RaytracingPipeline {
-    type ExtractedAsset = (Shader, Shader, Shader);
+    type ExtractedAsset = (Shader, Shader, Shader, Shader, Shader);
     type PreparedAsset = VkRaytracingPipeline;
     type Param = SRes<Assets<Shader>>;
 
@@ -45,17 +54,31 @@ impl VulkanAsset for RaytracingPipeline {
         shaders: &mut bevy::ecs::system::SystemParamItem<Self::Param>,
     ) -> Option<Self::ExtractedAsset> {
         let raygen_shader = shaders.get(&self.raygen_shader)?;
-        let hit_shader = shaders.get(&self.hit_shader)?;
         let miss_shader = shaders.get(&self.miss_shader)?;
-        Some((raygen_shader.clone(), hit_shader.clone(), miss_shader.clone()))
+        let triangle_hit_shader = shaders.get(&self.triangle_hit_shader)?;
+        let sphere_int_shader = shaders.get(&self.sphere_int_shader)?;
+        let sphere_hit_shader = shaders.get(&self.sphere_hit_shader)?;
+        Some((
+            raygen_shader.clone(),
+            triangle_hit_shader.clone(),
+            miss_shader.clone(),
+            sphere_int_shader.clone(),
+            sphere_hit_shader.clone(),
+        ))
     }
 
     fn prepare_asset(device: &RenderDevice, asset: Self::ExtractedAsset) -> Self::PreparedAsset {
-        let (raygen_shader, hit_shader, miss_shader) = asset;
+        let (raygen_shader, triangle_hit_shader, miss_shader, sphere_int_shader, sphere_hit_shader) = asset;
         println!("creating RT pipeline");
-        let (descriptor_set_layout, pipeline_layout, vk_pipeline, nr_shader_groups) =
-            create_raytracing_pipeline(&device, &raygen_shader, &hit_shader, &miss_shader);
-        let shader_binding_table = create_shader_binding_table(&device, vk_pipeline, nr_shader_groups);
+        let (descriptor_set_layout, pipeline_layout, vk_pipeline, shader_group_sizes) = create_raytracing_pipeline(
+            &device,
+            &raygen_shader,
+            &triangle_hit_shader,
+            &miss_shader,
+            &sphere_int_shader,
+            &sphere_hit_shader,
+        );
+        let shader_binding_table = create_shader_binding_table(&device, vk_pipeline, shader_group_sizes);
 
         let descriptor_set_alloc_info = vk::DescriptorSetAllocateInfo::builder()
             .descriptor_pool(device.descriptor_pool)
@@ -107,7 +130,6 @@ impl ShaderGroupSizes {
 }
 
 pub struct SBT {
-    group_sizes: ShaderGroupSizes,
     pub raygen_region: vk::StridedDeviceAddressRegionKHR,
     pub miss_region: vk::StridedDeviceAddressRegionKHR,
     pub hit_region: vk::StridedDeviceAddressRegionKHR,
@@ -126,8 +148,10 @@ impl Plugin for RaytracingPlugin {
 fn create_raytracing_pipeline(
     device: &RenderDevice,
     raygen_shader: &Shader,
-    hit_shader: &Shader,
+    triangle_hit_shader: &Shader,
     miss_shader: &Shader,
+    sphere_int_shader: &Shader,
+    sphere_hit_shader: &Shader,
 ) -> (
     vk::DescriptorSetLayout,
     vk::PipelineLayout,
@@ -160,7 +184,10 @@ fn create_raytracing_pipeline(
 
     let push_constant_info = vk::PushConstantRange::builder()
         .stage_flags(
-            vk::ShaderStageFlags::RAYGEN_KHR | vk::ShaderStageFlags::CLOSEST_HIT_KHR | vk::ShaderStageFlags::MISS_KHR,
+            vk::ShaderStageFlags::RAYGEN_KHR
+                | vk::ShaderStageFlags::CLOSEST_HIT_KHR
+                | vk::ShaderStageFlags::MISS_KHR
+                | vk::ShaderStageFlags::INTERSECTION_KHR,
         )
         .offset(0)
         .size(std::mem::size_of::<RaytracerRegisters>() as u32)
@@ -206,7 +233,7 @@ fn create_raytracing_pipeline(
     }
 
     {
-        shader_stages.push(device.load_shader(hit_shader, vk::ShaderStageFlags::CLOSEST_HIT_KHR));
+        shader_stages.push(device.load_shader(triangle_hit_shader, vk::ShaderStageFlags::CLOSEST_HIT_KHR));
         shader_groups.push(
             vk::RayTracingShaderGroupCreateInfoKHR::builder()
                 .ty(vk::RayTracingShaderGroupTypeKHR::TRIANGLES_HIT_GROUP)
@@ -216,12 +243,24 @@ fn create_raytracing_pipeline(
                 .intersection_shader(vk::SHADER_UNUSED_KHR)
                 .build(),
         );
+
+        shader_stages.push(device.load_shader(sphere_int_shader, vk::ShaderStageFlags::INTERSECTION_KHR));
+        shader_stages.push(device.load_shader(sphere_hit_shader, vk::ShaderStageFlags::CLOSEST_HIT_KHR));
+        shader_groups.push(
+            vk::RayTracingShaderGroupCreateInfoKHR::builder()
+                .ty(vk::RayTracingShaderGroupTypeKHR::PROCEDURAL_HIT_GROUP)
+                .general_shader(vk::SHADER_UNUSED_KHR)
+                .closest_hit_shader(shader_stages.len() as u32 - 1)
+                .any_hit_shader(vk::SHADER_UNUSED_KHR)
+                .intersection_shader(shader_stages.len() as u32 - 2)
+                .build(),
+        );
     }
 
     let shader_group_sizes = ShaderGroupSizes {
         nr_raygen: 1,
         nr_miss: 1,
-        nr_hit: 1,
+        nr_hit: 2,
     };
 
     assert_eq!(shader_group_sizes.sum(), shader_groups.len() as u32);
@@ -319,7 +358,9 @@ fn create_shader_binding_table(device: &RenderDevice, pipeline: vk::Pipeline, gr
                 dst = dst.add(handle_size_aligned as usize);
             }
 
-            dst = data.as_ptr_mut().add(raygen_region.size as usize + miss_region.size as usize);
+            dst = data
+                .as_ptr_mut()
+                .add(raygen_region.size as usize + miss_region.size as usize);
 
             // hit
             for _ in 0..group_sizes.nr_hit {
@@ -331,7 +372,6 @@ fn create_shader_binding_table(device: &RenderDevice, pipeline: vk::Pipeline, gr
     }
 
     SBT {
-        group_sizes,
         data,
         raygen_region,
         miss_region,

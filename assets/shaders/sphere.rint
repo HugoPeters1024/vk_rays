@@ -1,0 +1,82 @@
+#version 460
+#extension GL_EXT_ray_tracing : require
+#extension GL_EXT_buffer_reference : require
+#extension GL_EXT_scalar_block_layout : require
+
+struct Sphere {
+  vec3 center;
+  float radius;
+};
+
+layout(buffer_reference, scalar, buffer_reference_align = 16) buffer SphereBuffer
+{
+	Sphere spheres[];
+};
+
+layout(push_constant, std430) uniform Registers {
+  SphereBuffer un;
+  SphereBuffer vd;
+  SphereBuffer id;
+  SphereBuffer spheres;
+} regs;
+
+//layout(shaderRecordEXT, std430) buffer ShaderRecord
+//{
+//	SphereBuffer sphere_buffer;
+//};
+
+hitAttributeEXT vec3 sphere_point;
+
+vec2 naive_intersections(vec3 orig, vec3 dir, vec3 center, float radius)
+{
+	vec3 oc = orig - center;
+	float a = dot(dir, dir);
+	float b = dot(oc, dir);
+	float c = dot(oc, oc) - radius * radius;
+	float discr = b * b - a * c;
+
+	vec2 t = vec2(-1.0, -1.0);
+	if (discr >= 0.0) {
+		const float t1 = (-b - sqrt(discr)) / a;
+		const float t2 = (-b + sqrt(discr)) / a;
+		t = vec2(t1, t2);
+	}
+	return t;
+}
+
+
+// this method is documented in raytracing gems book
+vec2 gems_intersections(vec3 orig, vec3 dir, vec3 center, float radius)
+{
+	vec3 f = orig - center;
+	float a = dot(dir, dir);
+	float bi = dot(-f, dir);
+	float c = dot(f, f) - radius * radius;
+	vec3 s = f + (bi/a)*dir;
+	float discr = radius * radius - dot(s, s);
+
+	vec2 t = vec2(-1.0, -1.0);
+	if (discr >= 0) {
+		float q = bi + sign(bi) * sqrt(a*discr);
+		float t1 = c / q;
+		float t2 = q / a;
+		t = vec2(t1, t2);
+	}
+	return t;
+}
+
+void main()
+{
+	Sphere sph = regs.spheres.spheres[gl_PrimitiveID];
+	vec3 orig = gl_WorldRayOriginEXT;
+	vec3 dir = gl_WorldRayDirectionEXT;
+	
+	vec2 t = gems_intersections(orig, dir, sph.center, sph.radius);
+	
+	sphere_point =  orig + t.x * dir;
+	reportIntersectionEXT(t.x, 0);
+	sphere_point =  orig + t.y * dir;
+	reportIntersectionEXT(t.y, 0);	
+}
+
+

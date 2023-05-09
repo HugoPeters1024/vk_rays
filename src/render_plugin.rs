@@ -246,13 +246,15 @@ fn render(
                     uniform_buffer_address: render_resources.uniform_buffer.address,
                     vertex_buffer_address: blas.vertex_buffer.address,
                     index_buffer_address: blas.index_buffer.address,
+                    sphere_buffer_address: 0,
                 };
                 device.device.cmd_push_constants(
                     cmd_buffer,
                     compiled.pipeline_layout,
                     vk::ShaderStageFlags::RAYGEN_KHR
                         | vk::ShaderStageFlags::CLOSEST_HIT_KHR
-                        | vk::ShaderStageFlags::MISS_KHR,
+                        | vk::ShaderStageFlags::MISS_KHR
+                        | vk::ShaderStageFlags::INTERSECTION_KHR,
                     0,
                     bytemuck::bytes_of(&push_constants),
                 );
