@@ -39,6 +39,14 @@ impl<T> BufferView<T> {
     pub fn as_slice_mut(&mut self) -> &mut [T] {
         unsafe { std::slice::from_raw_parts_mut(self.ptr, self.nr_elements as usize) }
     }
+
+    pub fn as_ptr(&self) -> *const T {
+        self.ptr
+    }
+
+    pub fn as_ptr_mut(&mut self) -> *mut T {
+        self.ptr
+    }
 }
 
 impl<'a, T> Index<usize> for BufferView<T> {

@@ -55,7 +55,7 @@ impl VulkanAsset for RaytracingPipeline {
         println!("creating RT pipeline");
         let (descriptor_set_layout, pipeline_layout, vk_pipeline, nr_shader_groups) =
             create_raytracing_pipeline(&device, &raygen_shader, &hit_shader, &miss_shader);
-        let shader_binding_table = create_shader_binding_table(&device, vk_pipeline, nr_shader_groups as u32);
+        let shader_binding_table = create_shader_binding_table(&device, vk_pipeline, nr_shader_groups);
 
         let descriptor_set_alloc_info = vk::DescriptorSetAllocateInfo::builder()
             .descriptor_pool(device.descriptor_pool)
@@ -82,9 +82,7 @@ impl VulkanAsset for RaytracingPipeline {
         cleanup.send(VkCleanupEvent::Pipeline(asset.vk_pipeline));
         cleanup.send(VkCleanupEvent::PipelineLayout(asset.pipeline_layout));
         cleanup.send(VkCleanupEvent::DescriptorSetLayout(asset.descriptor_set_layout));
-        cleanup.send(VkCleanupEvent::Buffer(asset.shader_binding_table.raygen.handle));
-        cleanup.send(VkCleanupEvent::Buffer(asset.shader_binding_table.miss.handle));
-        cleanup.send(VkCleanupEvent::Buffer(asset.shader_binding_table.hit.handle));
+        cleanup.send(VkCleanupEvent::Buffer(asset.shader_binding_table.data.handle));
     }
 }
 
@@ -96,37 +94,24 @@ pub struct VkRaytracingPipeline {
     pub shader_binding_table: SBT,
 }
 
-pub struct SBT {
-    pub handle_size_aligned: u64,
-    pub raygen: Buffer<u8>,
-    pub miss: Buffer<u8>,
-    pub hit: Buffer<u8>,
+struct ShaderGroupSizes {
+    nr_raygen: u32,
+    nr_miss: u32,
+    nr_hit: u32,
 }
 
-impl SBT {
-    pub fn get_sbt_raygen(&self) -> vk::StridedDeviceAddressRegionKHR {
-        vk::StridedDeviceAddressRegionKHR::builder()
-            .device_address(self.raygen.address)
-            .stride(self.handle_size_aligned)
-            .size(self.handle_size_aligned)
-            .build()
+impl ShaderGroupSizes {
+    pub fn sum(&self) -> u32 {
+        self.nr_raygen + self.nr_miss + self.nr_hit
     }
+}
 
-    pub fn get_sbt_miss(&self) -> vk::StridedDeviceAddressRegionKHR {
-        vk::StridedDeviceAddressRegionKHR::builder()
-            .device_address(self.miss.address)
-            .stride(self.handle_size_aligned)
-            .size(self.handle_size_aligned)
-            .build()
-    }
-
-    pub fn get_sbt_hit(&self) -> vk::StridedDeviceAddressRegionKHR {
-        vk::StridedDeviceAddressRegionKHR::builder()
-            .device_address(self.hit.address)
-            .stride(self.handle_size_aligned)
-            .size(self.handle_size_aligned)
-            .build()
-    }
+pub struct SBT {
+    group_sizes: ShaderGroupSizes,
+    pub raygen_region: vk::StridedDeviceAddressRegionKHR,
+    pub miss_region: vk::StridedDeviceAddressRegionKHR,
+    pub hit_region: vk::StridedDeviceAddressRegionKHR,
+    pub data: Buffer<u8>,
 }
 
 pub struct RaytracingPlugin;
@@ -143,7 +128,12 @@ fn create_raytracing_pipeline(
     raygen_shader: &Shader,
     hit_shader: &Shader,
     miss_shader: &Shader,
-) -> (vk::DescriptorSetLayout, vk::PipelineLayout, vk::Pipeline, usize) {
+) -> (
+    vk::DescriptorSetLayout,
+    vk::PipelineLayout,
+    vk::Pipeline,
+    ShaderGroupSizes,
+) {
     let bindings = [
         vk::DescriptorSetLayoutBinding::builder()
             .binding(0)
@@ -228,6 +218,14 @@ fn create_raytracing_pipeline(
         );
     }
 
+    let shader_group_sizes = ShaderGroupSizes {
+        nr_raygen: 1,
+        nr_miss: 1,
+        nr_hit: 1,
+    };
+
+    assert_eq!(shader_group_sizes.sum(), shader_groups.len() as u32);
+
     let pipeline_info = vk::RayTracingPipelineCreateInfoKHR::builder()
         .stages(&shader_stages)
         .groups(&shader_groups)
@@ -253,62 +251,91 @@ fn create_raytracing_pipeline(
         }
     }
 
-    (descriptor_set_layout, pipeline_layout, pipeline, shader_groups.len())
+    (descriptor_set_layout, pipeline_layout, pipeline, shader_group_sizes)
 }
 
-fn create_shader_binding_table(device: &RenderDevice, pipeline: vk::Pipeline, group_count: u32) -> SBT {
+fn create_shader_binding_table(device: &RenderDevice, pipeline: vk::Pipeline, group_sizes: ShaderGroupSizes) -> SBT {
     let raytracing_properties = get_raytracing_properties(&device);
+
+    let handle_count = group_sizes.sum();
     let handle_size = raytracing_properties.shader_group_handle_size;
-    let handle_size_aligned =
-        vk_utils::aligned_size(handle_size, raytracing_properties.shader_group_handle_alignment) as usize;
-    let sbt_size = group_count as usize * handle_size_aligned;
+    let handle_size_aligned = vk_utils::aligned_size(handle_size, raytracing_properties.shader_group_handle_alignment);
+
+    let mut raygen_region = vk::StridedDeviceAddressRegionKHR::default();
+    let mut miss_region = vk::StridedDeviceAddressRegionKHR::default();
+    let mut hit_region = vk::StridedDeviceAddressRegionKHR::default();
+
+    raygen_region.stride =
+        vk_utils::aligned_size(handle_size_aligned, raytracing_properties.shader_group_base_alignment) as u64;
+    raygen_region.size = raygen_region.stride;
+
+    miss_region.stride = handle_size_aligned as u64;
+    miss_region.size = vk_utils::aligned_size(
+        group_sizes.nr_miss * handle_size_aligned,
+        raytracing_properties.shader_group_base_alignment,
+    ) as u64;
+
+    hit_region.stride = handle_size_aligned as u64;
+    hit_region.size = vk_utils::aligned_size(
+        group_sizes.nr_hit * handle_size_aligned,
+        raytracing_properties.shader_group_base_alignment,
+    ) as u64;
+
+    let handle_data_size = handle_count * handle_size;
 
     let handle_data = unsafe {
         device
             .exts
             .rt_pipeline
-            .get_ray_tracing_shader_group_handles(pipeline, 0, group_count, sbt_size as usize)
+            .get_ray_tracing_shader_group_handles(pipeline, 0, group_sizes.sum(), handle_data_size as usize)
             .unwrap()
     };
 
-    let mut raygen =
-        device.create_host_buffer::<u8>(handle_size as u64, vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR);
-    let mut miss = device.create_host_buffer::<u8>(handle_size as u64, vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR);
-    let mut hit = device.create_host_buffer::<u8>(handle_size as u64, vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR);
+    let sbt_size = raygen_region.size + miss_region.size + hit_region.size;
+    let mut data = device.create_host_buffer::<u8>(sbt_size, vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR);
 
-    for (i, b) in handle_data
-        .iter()
-        .skip(handle_size_aligned * 0)
-        .take(handle_size as usize)
-        .enumerate()
+    raygen_region.device_address = data.address;
+    miss_region.device_address = data.address + raygen_region.size;
+    hit_region.device_address = data.address + raygen_region.size + miss_region.size;
+
     {
-        let mut raygen = device.map_buffer(&mut raygen);
-        raygen[i] = *b;
-    }
-    for (i, b) in handle_data
-        .iter()
-        .skip(handle_size_aligned * 1)
-        .take(handle_size as usize)
-        .enumerate()
-    {
-        let mut miss = device.map_buffer(&mut miss);
-        miss[i] = *b;
-    }
-    for (i, b) in handle_data
-        .iter()
-        .skip(handle_size_aligned * 2)
-        .take(handle_size as usize)
-        .enumerate()
-    {
-        let mut hit = device.map_buffer(&mut hit);
-        hit[i] = *b;
+        let mut data = device.map_buffer(&mut data);
+
+        // memcpy syntax
+        unsafe {
+            let mut src = handle_data.as_ptr();
+            let mut dst = data.as_ptr_mut();
+
+            // raygen
+            std::ptr::copy_nonoverlapping::<u8>(src, dst, handle_size as usize);
+
+            // miss
+            dst = data.as_ptr_mut().add(raygen_region.size as usize);
+            src = src.add(handle_size as usize);
+
+            for _ in 0..group_sizes.nr_miss {
+                std::ptr::copy_nonoverlapping::<u8>(src, dst, handle_size as usize);
+                src = src.add(handle_size as usize);
+                dst = dst.add(handle_size_aligned as usize);
+            }
+
+            dst = data.as_ptr_mut().add(raygen_region.size as usize + miss_region.size as usize);
+
+            // hit
+            for _ in 0..group_sizes.nr_hit {
+                std::ptr::copy_nonoverlapping::<u8>(src, dst, handle_size as usize);
+                src = src.add(handle_size as usize);
+                dst = dst.add(handle_size_aligned as usize);
+            }
+        }
     }
 
     SBT {
-        handle_size_aligned: handle_size_aligned as u64,
-        raygen,
-        miss,
-        hit,
+        group_sizes,
+        data,
+        raygen_region,
+        miss_region,
+        hit_region,
     }
 }
 

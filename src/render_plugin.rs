@@ -268,9 +268,9 @@ fn render(
 
                 device.exts.rt_pipeline.cmd_trace_rays(
                     cmd_buffer,
-                    &compiled.shader_binding_table.get_sbt_raygen(),
-                    &compiled.shader_binding_table.get_sbt_miss(),
-                    &compiled.shader_binding_table.get_sbt_hit(),
+                    &compiled.shader_binding_table.raygen_region,
+                    &compiled.shader_binding_table.miss_region,
+                    &compiled.shader_binding_table.hit_region,
                     &vk::StridedDeviceAddressRegionKHR::default(),
                     swapchain.width,
                     swapchain.height,
