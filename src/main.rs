@@ -78,7 +78,6 @@ fn main() {
         })
         .add_startup_system(startup)
         .add_system(camera_clear)
-        .add_system(move_sphere)
         .add_system(report_fps)
         .add_system(player_controls)
         .add_system(spawn.run_if(on_timer(Duration::from_secs_f32(0.02))))
@@ -91,11 +90,23 @@ fn main() {
 fn startup(
     mut commands: Commands,
     assets: Res<AssetServer>,
-    device: Res<render_device::RenderDevice>,
     mut rt_pipelines: ResMut<Assets<RaytracingPipeline>>,
     mut rast_pipelines: ResMut<Assets<RasterizationPipeline>>,
 ) {
-    commands.spawn((Sphere, TransformBundle::default()));
+    commands.spawn((
+        Sphere,
+        TransformBundle::from_transform(Transform::from_translation(Vec3::new(0.0, 2.0, 0.0)).with_scale(Vec3::splat(2.0))),
+        RigidBody::Fixed,
+        Collider::ball(0.5),
+    ));
+    commands.spawn((
+        Sphere,
+        TransformBundle::from_transform(
+            Transform::from_translation(Vec3::new(2.5, 1.5, 0.0)).with_scale(Vec3::splat(2.0)),
+        ),
+        RigidBody::Fixed,
+        Collider::ball(0.5),
+    ));
     commands.spawn(Camera3dBundle {
         transform: Transform::from_xyz(0.0, 0.0, -3.0),
         ..default()
@@ -108,7 +119,7 @@ fn startup(
     // floor
     commands.spawn((
         game_assets.box_mesh.clone(),
-        TransformBundle::from_transform(Transform::from_xyz(0.0, -1.0, 0.0).with_scale(Vec3::new(10.0, 0.2, 10.0))),
+        TransformBundle::from_transform(Transform::from_xyz(0.0, -1.0, 0.0).with_scale(Vec3::new(100.0, 0.2, 100.0))),
         RigidBody::Fixed,
         Collider::cuboid(0.5, 0.5, 0.5),
     ));
@@ -200,18 +211,8 @@ fn camera_clear(input: Res<Input<KeyCode>>, mut q: Query<&mut Camera3d>) {
     }
 }
 
-fn move_sphere(time: Res<Time>, mut q: Query<&mut Transform, With<Sphere>>) {
-    let mut transform = q.single_mut();
-    transform.translation = 3.0
-        * Vec3::new(
-            (time.elapsed_seconds() * 1.5).sin(),
-            0.0,
-            (time.elapsed_seconds() * 1.5).cos(),
-        );
-}
-
 fn spawn(mut commands: Commands, game_assets: Res<GameAssets>, q: Query<&MainBlock>) {
-    if q.iter().count() < 0 {
+    if q.iter().count() < 300 {
         commands.spawn((
             game_assets.box_mesh.clone(),
             TransformBundle::from_transform(
@@ -219,7 +220,7 @@ fn spawn(mut commands: Commands, game_assets: Res<GameAssets>, q: Query<&MainBlo
                     .with_rotation(Quat::from_rotation_y(PI / 2.0))
                     .with_translation(Vec3::new(
                         rand::random::<f32>() * 10.0 - 5.0,
-                        3.0,
+                        5.0,
                         rand::random::<f32>() * 10.0 - 5.0,
                     )),
             ),

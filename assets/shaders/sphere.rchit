@@ -18,12 +18,15 @@ hitAttributeEXT vec3 spherePoint;
 
 void main() {
   const AABB sphereAABB = regs.spheres.aabbs[0];
-  const vec3 center = (gl_ObjectToWorldEXT * vec4(aabb_center(sphereAABB),1)).xyz;
+  const vec3 center = aabb_center(sphereAABB);
 
   const vec3 normal = normalize(spherePoint - center);
+  const vec3 world_normal = normalize((gl_ObjectToWorldEXT * vec4(normal, 0.0)).xyz);
 
 
-  payload.color = abs(spherePoint);
+  payload.color = vec3(0.99);
   payload.t = gl_HitTEXT;
   payload.normal = normal;
+  payload.emission = vec3(0.0);
+  payload.roughness = 0.06f;
 }

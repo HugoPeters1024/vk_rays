@@ -8,7 +8,7 @@ layout(location = 0) out vec4 oColor;
 
 void main() {
     const float gamma = 1.0f;
-    const float exposure = 1.0f;
+    const float exposure = 5.0f;
 
     vec4 bufferVal = texture(test, uv);
 
@@ -16,6 +16,5 @@ void main() {
     vec3 mapped = pow(vec3(1.0f) - exp(-hdrColor * exposure), vec3(1.0f / gamma));
 
     oColor = vec4(mapped, 1.0f);
-    oColor = vec4(bufferVal.xyz / bufferVal.w, 1.0f);
 }
 

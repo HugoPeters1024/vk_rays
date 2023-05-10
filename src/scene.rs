@@ -6,7 +6,7 @@ use crate::{
     gltf_assets::GltfMesh,
     render_buffer::{Buffer, BufferProvider},
     render_device::RenderDevice,
-    sphere_blas::{SphereBLAS, Sphere},
+    sphere_blas::{Sphere, SphereBLAS},
     vulkan_assets::{VkAssetCleanupPlaybook, VulkanAssets},
     vulkan_cleanup::{VkCleanup, VkCleanupEvent},
 };
@@ -48,21 +48,23 @@ fn update_scene(
     sphere_blas: Res<SphereBLAS>,
     spheres: Query<(Entity, With<Sphere>)>,
 ) {
-    let (sphere_e, sphere) = spheres.single();
+    let mut resolved_blasses: Vec<(u32, &GlobalTransform, AccelerationStructureReferenceKHR)> = Vec::new();
 
-    let mut resolved_blasses: Vec<(&GlobalTransform, AccelerationStructureReferenceKHR)> = Vec::new();
-    resolved_blasses.push((gtransforms.get(sphere_e).unwrap(), sphere_blas.get_reference()));
+    for (sphere_e, _) in spheres.iter() {
+        resolved_blasses.push((1, gtransforms.get(sphere_e).unwrap(), sphere_blas.get_reference()));
+    }
+
     for (mesh_e, mesh) in meshes.iter() {
         let Some(blas) = blasses.get(&mesh) else {
             continue;
         };
-        resolved_blasses.push((gtransforms.get(mesh_e).unwrap(), blas.get_reference()));
+        resolved_blasses.push((0, gtransforms.get(mesh_e).unwrap(), blas.get_reference()));
     }
 
     let instances = resolved_blasses
         .into_iter()
         .enumerate()
-        .map(|(i, (transform, blas))| {
+        .map(|(i, (hit_offset, transform, blas))| {
             let columns = transform.affine().to_cols_array_2d();
             let transform = vk::TransformMatrixKHR {
                 matrix: [
@@ -85,8 +87,7 @@ fn update_scene(
                 transform,
                 instance_custom_index_and_mask: Packed24_8::new(i as u32, 0xFF),
                 instance_shader_binding_table_record_offset_and_flags: Packed24_8::new(
-                    if i == 0 { 1 } else { 0 },
-                    0b1, //vk::GeometryInstanceFlagsKHR::TRIANGLE_FACING_CULL_DISABLE,
+                    hit_offset, 0b1, //vk::GeometryInstanceFlagsKHR::TRIANGLE_FACING_CULL_DISABLE,
                 ),
                 acceleration_structure_reference: blas,
             }

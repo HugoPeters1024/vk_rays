@@ -22,7 +22,7 @@ mat3 fromAxisAngle(vec3 axis, float angle)
                 oc * axis.z * axis.x - axis.y * s,  oc * axis.y * axis.z + axis.x * s,  oc * axis.z * axis.z + c);
 }
 
-vec3 alignZUP(in vec3 s, in vec3 normal)
+vec3 alignToNormalZUP(in vec3 s, in vec3 normal)
 {
   const vec3 up = vec3(0.0f, 0.0f, 1.0f);
   if (dot(up, normal) > 0.999f) {
@@ -38,18 +38,14 @@ vec3 alignZUP(in vec3 s, in vec3 normal)
   return s * fromAxisAngle(axis, angle);
 }
 
-vec3 hsv2rgb(vec3 c)
-{
-    vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
-    vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
-    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
-}
-
 struct HitPayload {
   float t;
   vec3 color;
   vec3 normal;
+  vec3 emission;
+  float roughness;
 };
+
 
 struct AABB {
   float minx;
@@ -93,7 +89,6 @@ layout (buffer_reference, std430, buffer_reference_align = 16) buffer UniformDat
   mat4 inverse_proj;
   uint entropy;
 };
-
 
 
 #endif

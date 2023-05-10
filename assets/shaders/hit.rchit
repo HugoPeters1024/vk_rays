@@ -29,6 +29,13 @@ void main()
 
   payload.normal = world_normal;
   payload.t = gl_HitTEXT;
-  payload.color = vec3(0.3f, 0.1, 0.03);
+  payload.color = vec3(0.7f, 0.7, 0.3);
+  g_seed = wang_hash(gl_InstanceID);
+  payload.color = SampleRandomColor();
+  payload.emission = vec3(0);
+  if (gl_InstanceID % 23 == 4) {
+    payload.emission = vec3(1.0);
+  }
+  payload.roughness = 1.0f;
 }
 

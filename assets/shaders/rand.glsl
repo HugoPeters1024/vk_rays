@@ -48,4 +48,20 @@ vec3 SampleHemisphereCosine()
     return vec3(x, y, sqrt(1.0f - r0));
 }
 
+vec3 hsv2rgb(vec3 c)
+{
+    vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+    vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+}
+
+vec3 SampleRandomColor()
+{
+  float h = randf();
+  float s = 0.5 + 0.5 * randf();
+  float v = 0.5 + 0.5 * randf();
+  return hsv2rgb(vec3(h, s, v));
+}
+
+
 #endif // GLSL_RAND

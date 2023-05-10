@@ -36,16 +36,25 @@ void main() {
   float tmin = 0.001;
   float tmax = 100.0;
 
-  vec3 accum = vec3(0.0);
 
   vec3 origin = start_origin;
   vec3 direction = start_direction;
+
+  vec3 accum = vec3(0.0);
   vec3 mask = vec3(1.0);
 
-  traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xFF, 0, 0, 0, origin, tmin, direction, tmax, 0);
 
-  if (payload.t > 0) {
-    accum += abs(payload.normal);
+  for(uint bounce=0; bounce<8; bounce++) {
+    traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xFF, 0, 0, 0, origin, tmin, direction, tmax, 0);
+    accum += mask * payload.emission;
+    if (payload.t == 0) {
+      break;
+    }
+
+    mask *= payload.color;
+
+    origin = origin + (payload.t - EPS) * direction;
+    direction = mix(payload.normal, alignToNormalZUP(SampleHemisphereCosine(), payload.normal), payload.roughness);
   }
 
   vec4 old_image = regs.un.entropy == 666 ? vec4(0) : imageLoad(render_target, ivec2(gl_LaunchIDEXT.xy));
