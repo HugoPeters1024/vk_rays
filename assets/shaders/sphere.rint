@@ -5,17 +5,11 @@
 
 #include "common.glsl"
 
-
-layout(buffer_reference, scalar, buffer_reference_align = 16) buffer SphereBuffer
-{
-	AABB spheres[];
-};
-
 layout(push_constant, std430) uniform Registers {
-  SphereBuffer un;
-  SphereBuffer vd;
-  SphereBuffer id;
-  SphereBuffer spheres;
+  UniformData un;
+  VertexData vd;
+  IndexData id;
+  SphereData spheres;
 } regs;
 
 //layout(shaderRecordEXT, std430) buffer ShaderRecord
@@ -47,7 +41,7 @@ vec2 gems_intersections(vec3 orig, vec3 dir, vec3 center, float radius)
 
 void main()
 {
-  AABB aabb = regs.spheres.spheres[gl_PrimitiveID];
+  AABB aabb = regs.spheres.aabbs[0];
   vec3 orig = gl_WorldRayOriginEXT;
   vec3 dir = gl_WorldRayDirectionEXT;
   vec3 center = aabb_center(aabb);

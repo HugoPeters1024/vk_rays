@@ -15,7 +15,7 @@ impl Default for Camera3d {
         Self {
             fov: PI / 2.8,
             min_t: 0.0001,
-            max_t: 1000.0,
+            max_t: 100.0,
             clear: true,
         }
     }
