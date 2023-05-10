@@ -1,5 +1,4 @@
 mod acceleration_structure;
-mod sphere_blas;
 mod camera;
 mod composed_asset;
 mod gltf_assets;
@@ -12,6 +11,7 @@ mod render_image;
 mod render_plugin;
 mod scene;
 mod shader;
+mod sphere_blas;
 mod swapchain;
 mod vk_utils;
 mod vulkan_assets;
@@ -30,7 +30,7 @@ use rand::RngCore;
 use rasterization_pipeline::RasterizationPipeline;
 use render_plugin::RenderConfig;
 use shader::Shader;
-use sphere_blas::{SphereBLAS, Sphere};
+use sphere_blas::{Sphere, SphereBLAS};
 
 use crate::raytracing_pipeline::RaytracingPipeline;
 use crate::render_plugin::RenderPlugin;
@@ -119,7 +119,6 @@ fn startup(
     let sphere_int_shader: Handle<Shader> = assets.load("shaders/sphere.rint");
     let sphere_hit_shader: Handle<Shader> = assets.load("shaders/sphere.rchit");
 
-
     let rt_pipeline = rt_pipelines.add(RaytracingPipeline {
         raygen_shader: raygen_shader.clone(),
         triangle_hit_shader: triangle_hit_shader.clone(),
@@ -147,7 +146,7 @@ fn startup(
 
 fn report_fps(time: Res<Time>) {
     let mut rng = rand::thread_rng();
-    if rng.next_u32() % 10000 == 0 {
+    if rng.next_u32() % 1000 == 0 {
         println!("FPS: {}", 1.0 / time.delta_seconds());
     }
 }
@@ -160,7 +159,6 @@ fn player_controls(input: Res<Input<KeyCode>>, time: Res<Time>, mut camera: Quer
     let look_dir = camera.rotation.inverse() * Vec3::new(0.0, 0.0, 1.0);
 
     let sideways = Vec3::cross(look_dir, Vec3::Y);
-
 
     if input.pressed(KeyCode::W) {
         camera.translation += look_dir * f;
@@ -203,13 +201,17 @@ fn camera_clear(input: Res<Input<KeyCode>>, mut q: Query<&mut Camera3d>) {
 }
 
 fn spawn(mut commands: Commands, game_assets: Res<GameAssets>, q: Query<&MainBlock>) {
-    if q.iter().count() <  0 {
+    if q.iter().count() < 0 {
         commands.spawn((
             game_assets.box_mesh.clone(),
             TransformBundle::from_transform(
                 Transform::default()
                     .with_rotation(Quat::from_rotation_y(PI / 2.0))
-                    .with_translation(Vec3::new(rand::random::<f32>() * 10.0 - 5.0, 3.0, rand::random::<f32>() * 10.0 - 5.0)),
+                    .with_translation(Vec3::new(
+                        rand::random::<f32>() * 10.0 - 5.0,
+                        3.0,
+                        rand::random::<f32>() * 10.0 - 5.0,
+                    )),
             ),
             MainBlock,
             RigidBody::Dynamic,

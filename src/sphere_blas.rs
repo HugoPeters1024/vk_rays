@@ -5,12 +5,10 @@ use crate::{
     acceleration_structure::{allocate_acceleration_structure, AccelerationStructure},
     render_buffer::{Buffer, BufferProvider},
     render_device::RenderDevice,
-    vulkan_assets::VulkanAsset,
-    vulkan_cleanup::VkCleanup,
 };
 
 pub struct Sphere {
-    pub data: Vec4,
+    data: Vec4,
 }
 
 impl Sphere {

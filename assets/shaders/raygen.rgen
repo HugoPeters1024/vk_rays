@@ -38,26 +38,16 @@ void main() {
 
   vec3 accum = vec3(0.0);
 
-  uint MAX_SAMPLES = 1;
+  vec3 origin = start_origin;
+  vec3 direction = start_direction;
+  vec3 mask = vec3(1.0);
 
-  for(uint s=0; s<MAX_SAMPLES; s++) {
-    vec3 origin = start_origin;
-    vec3 direction = start_direction;
-    vec3 mask = vec3(1.0);
+  traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xFF, 0, 0, 0, origin, tmin, direction, tmax, 0);
 
-    for (uint bounce=0; bounce<8; bounce++) {
-      traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xFF, 0, 0, 0, origin, tmin, direction, tmax, 0);
-
-      if (payload.t == 0) {
-        continue;
-      }
-      accum += abs(payload.normal);
-      break;
-
-      //vec3 sample_dir = alignZUP(SampleHemisphereCosine(), payload.normal);
-    }
+  if (payload.t > 0) {
+    accum += abs(payload.normal);
   }
 
   vec4 old_image = regs.un.entropy == 666 ? vec4(0) : imageLoad(render_target, ivec2(gl_LaunchIDEXT.xy));
-  imageStore(render_target, ivec2(gl_LaunchIDEXT.xy), old_image + vec4(accum, float(MAX_SAMPLES)));
+  imageStore(render_target, ivec2(gl_LaunchIDEXT.xy), old_image + vec4(accum, 1.0));
 }

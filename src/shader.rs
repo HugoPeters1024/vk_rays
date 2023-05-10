@@ -1,6 +1,3 @@
-use std::{borrow::Cow, io::Cursor, fs::read_to_string, path::PathBuf, str::FromStr};
-
-use regex::Regex;
 use crate::render_device::*;
 use ash::{util::read_spv, vk};
 use bevy::{
@@ -8,6 +5,7 @@ use bevy::{
     reflect::TypeUuid,
 };
 use shaderc;
+use std::{borrow::Cow, fs::read_to_string, io::Cursor};
 
 #[derive(Debug, Clone, TypeUuid)]
 #[uuid = "d95bc916-6c55-4de3-9622-37e7b6969fda"]
@@ -55,7 +53,7 @@ impl AssetLoader for ShaderLoader {
             options.set_target_env(shaderc::TargetEnv::Vulkan, vk::make_api_version(0, 1, 3, 0));
             options.set_target_spirv(shaderc::SpirvVersion::V1_6);
 
-            options.set_include_callback(|fname,_type,_, _depth| {
+            options.set_include_callback(|fname, _type, _, _depth| {
                 let full_path = format!("./assets/shaders/{}", fname);
                 let Ok(contents) = read_to_string(full_path.clone()) else {
                     return Err(format!("Failed to read shader include: {}", fname));

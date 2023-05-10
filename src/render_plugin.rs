@@ -1,6 +1,3 @@
-use std::f32::consts::PI;
-
-use crate::acceleration_structure::BLAS;
 use crate::camera::Camera3d;
 use crate::gltf_assets::GltfMesh;
 use crate::rasterization_pipeline::{RasterizationPipeline, RasterizationPipelinePlugin};
@@ -162,11 +159,11 @@ fn render(
     rt_pipelines: Res<VulkanAssets<RaytracingPipeline>>,
     rast_pipelines: Res<VulkanAssets<RasterizationPipeline>>,
     primary_window: Query<&Window, With<PrimaryWindow>>,
-    camera: Query<(&Camera3d, Ref<Transform>, &GlobalTransform)>,
+    camera: Query<(&Camera3d, &GlobalTransform)>,
 ) {
     let sphere_blas = sphere_blass.single();
     let mut swapchain = swapchain.single_mut();
-    let (camera, camera_transform, camera_g_transform) = camera.single();
+    let (camera, camera_g_transform) = camera.single();
 
     // wait for the previous frame to finish
     unsafe {
@@ -235,7 +232,12 @@ fn render(
                     let mut rng = rand::thread_rng();
                     let (_, rotation, translation) = camera_g_transform.to_scale_rotation_translation();
                     let camera_view = Mat4::from_quat(rotation) * Mat4::from_translation(translation);
-                    let projection = Mat4::perspective_rh(camera.fov, swapchain.width as f32 / swapchain.height as f32, camera.min_t, camera.max_t);
+                    let projection = Mat4::perspective_rh(
+                        camera.fov,
+                        swapchain.width as f32 / swapchain.height as f32,
+                        camera.min_t,
+                        camera.max_t,
+                    );
                     let entropy = if camera.clear { 666 } else { rng.next_u32() };
                     uniform_view[0] = UniformData {
                         inverse_view: camera_view.inverse(),

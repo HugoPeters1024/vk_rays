@@ -1,13 +1,14 @@
-use ash::vk::{self, Packed24_8, AccelerationStructureReferenceKHR};
+use ash::vk::{self, AccelerationStructureReferenceKHR, Packed24_8};
 use bevy::prelude::*;
 
 use crate::{
-    acceleration_structure::{AccelerationStructure, BLAS},
+    acceleration_structure::AccelerationStructure,
     gltf_assets::GltfMesh,
     render_buffer::{Buffer, BufferProvider},
     render_device::RenderDevice,
+    sphere_blas::SphereBLAS,
     vulkan_assets::{VkAssetCleanupPlaybook, VulkanAssets},
-    vulkan_cleanup::{VkCleanup, VkCleanupEvent}, sphere_blas::SphereBLAS,
+    vulkan_cleanup::{VkCleanup, VkCleanupEvent},
 };
 
 #[derive(Resource, Default)]
@@ -83,7 +84,8 @@ fn update_scene(
                 transform,
                 instance_custom_index_and_mask: Packed24_8::new(i as u32, 0xFF),
                 instance_shader_binding_table_record_offset_and_flags: Packed24_8::new(
-                    if i == 0 { 1 } else { 0 }, 0b1, //vk::GeometryInstanceFlagsKHR::TRIANGLE_FACING_CULL_DISABLE,
+                    if i == 0 { 1 } else { 0 },
+                    0b1, //vk::GeometryInstanceFlagsKHR::TRIANGLE_FACING_CULL_DISABLE,
                 ),
                 acceleration_structure_reference: blas,
             }
