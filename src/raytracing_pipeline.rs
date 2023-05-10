@@ -294,30 +294,29 @@ fn create_raytracing_pipeline(
 }
 
 fn create_shader_binding_table(device: &RenderDevice, pipeline: vk::Pipeline, group_sizes: ShaderGroupSizes) -> SBT {
-    let raytracing_properties = get_raytracing_properties(&device);
+    let rtprops = get_raytracing_properties(&device);
 
     let handle_count = group_sizes.sum();
-    let handle_size = raytracing_properties.shader_group_handle_size;
-    let handle_size_aligned = vk_utils::aligned_size(handle_size, raytracing_properties.shader_group_handle_alignment);
+    let handle_size = rtprops.shader_group_handle_size;
+    let handle_size_aligned = vk_utils::aligned_size(handle_size, rtprops.shader_group_handle_alignment);
 
     let mut raygen_region = vk::StridedDeviceAddressRegionKHR::default();
     let mut miss_region = vk::StridedDeviceAddressRegionKHR::default();
     let mut hit_region = vk::StridedDeviceAddressRegionKHR::default();
 
-    raygen_region.stride =
-        vk_utils::aligned_size(handle_size_aligned, raytracing_properties.shader_group_base_alignment) as u64;
+    raygen_region.stride = vk_utils::aligned_size(handle_size_aligned, rtprops.shader_group_base_alignment) as u64;
     raygen_region.size = raygen_region.stride;
 
     miss_region.stride = handle_size_aligned as u64;
     miss_region.size = vk_utils::aligned_size(
-        group_sizes.nr_miss * handle_size_aligned,
-        raytracing_properties.shader_group_base_alignment,
+        group_sizes.nr_miss * miss_region.stride as u32,
+        rtprops.shader_group_base_alignment,
     ) as u64;
 
     hit_region.stride = handle_size_aligned as u64;
     hit_region.size = vk_utils::aligned_size(
-        group_sizes.nr_hit * handle_size_aligned,
-        raytracing_properties.shader_group_base_alignment,
+        group_sizes.nr_hit * hit_region.stride as u32,
+        rtprops.shader_group_base_alignment,
     ) as u64;
 
     let handle_data_size = handle_count * handle_size;
@@ -331,48 +330,48 @@ fn create_shader_binding_table(device: &RenderDevice, pipeline: vk::Pipeline, gr
     };
 
     let sbt_size = raygen_region.size + miss_region.size + hit_region.size;
-    let mut data = device.create_host_buffer::<u8>(sbt_size, vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR);
+    let mut sbt_buffer = device.create_host_buffer::<u8>(sbt_size, vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR);
 
-    raygen_region.device_address = data.address;
-    miss_region.device_address = data.address + raygen_region.size;
-    hit_region.device_address = data.address + raygen_region.size + miss_region.size;
+    raygen_region.device_address = sbt_buffer.address;
+    miss_region.device_address = sbt_buffer.address + raygen_region.size;
+    hit_region.device_address = sbt_buffer.address + raygen_region.size + miss_region.size;
 
     {
-        let mut data = device.map_buffer(&mut data);
+        let mut sbt_buffer = device.map_buffer(&mut sbt_buffer);
 
         // memcpy syntax
         unsafe {
             let mut src = handle_data.as_ptr();
-            let mut dst = data.as_ptr_mut();
+            let mut dst = sbt_buffer.as_ptr_mut();
 
-            // raygen
+            // raygen region (only a handle)
             std::ptr::copy_nonoverlapping::<u8>(src, dst, handle_size as usize);
 
-            // miss
-            dst = data.as_ptr_mut().add(raygen_region.size as usize);
+            // miss region (comes after the raygen region)
+            dst = sbt_buffer.as_ptr_mut().add(raygen_region.size as usize);
             src = src.add(handle_size as usize);
 
             for _ in 0..group_sizes.nr_miss {
                 std::ptr::copy_nonoverlapping::<u8>(src, dst, handle_size as usize);
                 src = src.add(handle_size as usize);
-                dst = dst.add(handle_size_aligned as usize);
+                dst = dst.add(miss_region.stride as usize);
             }
 
-            dst = data
+            // hit region (comes after the raygen + miss region)
+            dst = sbt_buffer
                 .as_ptr_mut()
                 .add(raygen_region.size as usize + miss_region.size as usize);
 
-            // hit
             for _ in 0..group_sizes.nr_hit {
                 std::ptr::copy_nonoverlapping::<u8>(src, dst, handle_size as usize);
                 src = src.add(handle_size as usize);
-                dst = dst.add(handle_size_aligned as usize);
+                dst = dst.add(hit_region.stride as usize);
             }
         }
     }
 
     SBT {
-        data,
+        data: sbt_buffer,
         raygen_region,
         miss_region,
         hit_region,

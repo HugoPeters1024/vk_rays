@@ -3,18 +3,12 @@
 #extension GL_EXT_buffer_reference : require
 #extension GL_EXT_scalar_block_layout : require
 
-struct Sphere {
-  float minx;
-  float miny;
-  float minz;
-  float maxx;
-  float maxy;
-  float maxz;
-};
+#include "common.glsl"
+
 
 layout(buffer_reference, scalar, buffer_reference_align = 16) buffer SphereBuffer
 {
-	Sphere spheres[];
+	AABB spheres[];
 };
 
 layout(push_constant, std430) uniform Registers {
@@ -30,24 +24,6 @@ layout(push_constant, std430) uniform Registers {
 //};
 
 hitAttributeEXT vec3 sphere_point;
-
-vec2 naive_intersections(vec3 orig, vec3 dir, vec3 center, float radius)
-{
-	vec3 oc = orig - center;
-	float a = dot(dir, dir);
-	float b = dot(oc, dir);
-	float c = dot(oc, oc) - radius * radius;
-	float discr = b * b - a * c;
-
-	vec2 t = vec2(-1.0, -1.0);
-	if (discr >= 0.0) {
-		const float t1 = (-b - sqrt(discr)) / a;
-		const float t2 = (-b + sqrt(discr)) / a;
-		t = vec2(t1, t2);
-	}
-	return t;
-}
-
 
 // this method is documented in raytracing gems book
 vec2 gems_intersections(vec3 orig, vec3 dir, vec3 center, float radius)
@@ -71,14 +47,11 @@ vec2 gems_intersections(vec3 orig, vec3 dir, vec3 center, float radius)
 
 void main()
 {
-  Sphere sph = regs.spheres.spheres[gl_PrimitiveID];
+  AABB aabb = regs.spheres.spheres[gl_PrimitiveID];
   vec3 orig = gl_WorldRayOriginEXT;
   vec3 dir = gl_WorldRayDirectionEXT;
-
-  vec3 aabb_max = vec3(sph.maxx, sph.maxy, sph.maxz);
-  vec3 aabb_min = vec3(sph.minx, sph.miny, sph.minz);
-  vec3 center = (aabb_max + aabb_min) / vec3(2.0);
-  float radius = (aabb_max.x - aabb_min.x) / 2.0;
+  vec3 center = aabb_center(aabb);
+  float radius = aabb_radius(aabb);
 	
  	vec2 t = gems_intersections(orig, dir, center, radius);
    

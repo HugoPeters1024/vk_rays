@@ -14,6 +14,6 @@ layout(location = 0) rayPayloadInEXT Payload {
 hitAttributeEXT vec3 spherePoint;
 
 void main() {
-  payload.color = vec3(1.0);
+  payload.color = abs(spherePoint);
   payload.t = gl_HitTEXT;
 }

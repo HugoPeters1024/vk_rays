@@ -99,6 +99,23 @@ vec3 hsv2rgb(vec3 c)
     return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
 }
 
+struct AABB {
+  float minx;
+  float miny;
+  float minz;
+  float maxx;
+  float maxy;
+  float maxz;
+};
+
+vec3 aabb_center(in AABB aabb) {
+  return vec3((aabb.minx + aabb.maxx) * 0.5f, (aabb.miny + aabb.maxy) * 0.5f, (aabb.minz + aabb.maxz) * 0.5f);
+}
+
+// Assumes the AABB is equal in all dimensions
+float aabb_radius(in AABB aabb) {
+  return (aabb.maxx - aabb.minx) * 0.5f;
+}
 
 
 #endif
