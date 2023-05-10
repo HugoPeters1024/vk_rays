@@ -1,4 +1,4 @@
-use ash::vk::{self, Packed24_8};
+use ash::vk::{self, Packed24_8, AccelerationStructureReferenceKHR};
 use bevy::prelude::*;
 
 use crate::{
@@ -7,7 +7,7 @@ use crate::{
     render_buffer::{Buffer, BufferProvider},
     render_device::RenderDevice,
     vulkan_assets::{VkAssetCleanupPlaybook, VulkanAssets},
-    vulkan_cleanup::{VkCleanup, VkCleanupEvent},
+    vulkan_cleanup::{VkCleanup, VkCleanupEvent}, sphere_blas::SphereBLAS,
 };
 
 #[derive(Resource, Default)]
@@ -43,13 +43,18 @@ fn update_scene(
     device: Res<RenderDevice>,
     meshes: Query<(&GlobalTransform, &Handle<GltfMesh>)>,
     blasses: Res<VulkanAssets<GltfMesh>>,
+    spheres: Query<&SphereBLAS>,
 ) {
-    let mut resolved_blasses: Vec<(&GlobalTransform, &BLAS)> = Vec::new();
+    let sphere = spheres.single();
+
+    let mut resolved_blasses: Vec<(&GlobalTransform, AccelerationStructureReferenceKHR)> = Vec::new();
+    let default_transform = GlobalTransform::default();
+    resolved_blasses.push((&default_transform, sphere.get_reference()));
     for (t, mesh) in meshes.iter() {
         let Some(blas) = blasses.get(&mesh) else {
             continue;
         };
-        resolved_blasses.push((t, blas));
+        resolved_blasses.push((t, blas.get_reference()));
     }
 
     let instances = resolved_blasses
@@ -78,9 +83,9 @@ fn update_scene(
                 transform,
                 instance_custom_index_and_mask: Packed24_8::new(i as u32, 0xFF),
                 instance_shader_binding_table_record_offset_and_flags: Packed24_8::new(
-                    0, 0b1, //vk::GeometryInstanceFlagsKHR::TRIANGLE_FACING_CULL_DISABLE,
+                    if i == 0 { 1 } else { 0 }, 0b1, //vk::GeometryInstanceFlagsKHR::TRIANGLE_FACING_CULL_DISABLE,
                 ),
-                acceleration_structure_reference: blas.get_reference(),
+                acceleration_structure_reference: blas,
             }
         })
         .collect::<Vec<_>>();

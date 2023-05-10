@@ -62,7 +62,7 @@ void main() {
 
   vec3 accum = vec3(0.0);
 
-  uint MAX_SAMPLES = 4;
+  uint MAX_SAMPLES = 1;
   const float BRDF = 2 * PI;
 
   for(uint s=0; s<MAX_SAMPLES; s++) {
@@ -72,6 +72,9 @@ void main() {
 
     for (uint bounce=0; bounce<8; bounce++) {
       traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xFF, 0, 0, 0, origin, tmin, direction, tmax, 0);
+      accum += payload.color;
+      break;
+
 
       if (payload.t == 0.0) {
         accum += mask * payload.color;

@@ -4,8 +4,12 @@
 #extension GL_EXT_scalar_block_layout : require
 
 struct Sphere {
-  vec3 center;
-  float radius;
+  float minx;
+  float miny;
+  float minz;
+  float maxx;
+  float maxy;
+  float maxz;
 };
 
 layout(buffer_reference, scalar, buffer_reference_align = 16) buffer SphereBuffer
@@ -67,16 +71,21 @@ vec2 gems_intersections(vec3 orig, vec3 dir, vec3 center, float radius)
 
 void main()
 {
-	Sphere sph = regs.spheres.spheres[gl_PrimitiveID];
-	vec3 orig = gl_WorldRayOriginEXT;
-	vec3 dir = gl_WorldRayDirectionEXT;
+  Sphere sph = regs.spheres.spheres[gl_PrimitiveID];
+  vec3 orig = gl_WorldRayOriginEXT;
+  vec3 dir = gl_WorldRayDirectionEXT;
+
+  vec3 aabb_max = vec3(sph.maxx, sph.maxy, sph.maxz);
+  vec3 aabb_min = vec3(sph.minx, sph.miny, sph.minz);
+  vec3 center = (aabb_max + aabb_min) / vec3(2.0);
+  float radius = (aabb_max.x - aabb_min.x) / 2.0;
 	
-	vec2 t = gems_intersections(orig, dir, sph.center, sph.radius);
-	
-	sphere_point =  orig + t.x * dir;
-	reportIntersectionEXT(t.x, 0);
-	sphere_point =  orig + t.y * dir;
-	reportIntersectionEXT(t.y, 0);	
+ 	vec2 t = gems_intersections(orig, dir, center, radius);
+   
+ 	sphere_point =  orig + t.x * dir;
+ 	reportIntersectionEXT(t.x, 0);
+ 	sphere_point =  orig + t.y * dir;
+ 	reportIntersectionEXT(t.y, 0);	
 }
 
 

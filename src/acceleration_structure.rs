@@ -301,7 +301,7 @@ fn extract_mesh_data(gltf: &GltfMesh, vertex_buffer: &mut [Vertex], index_buffer
     geometries
 }
 
-fn allocate_acceleration_structure(
+pub fn allocate_acceleration_structure(
     device: &RenderDevice,
     ty: vk::AccelerationStructureTypeKHR,
     build_size: &vk::AccelerationStructureBuildSizesInfoKHR,

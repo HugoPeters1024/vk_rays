@@ -7,6 +7,7 @@ use crate::rasterization_pipeline::{RasterizationPipeline, RasterizationPipeline
 use crate::raytracing_pipeline::{RaytracerRegisters, RaytracingPipeline, RaytracingPlugin};
 use crate::render_buffer::{Buffer, BufferProvider};
 use crate::scene::{Scene, ScenePlugin};
+use crate::sphere_blas::SphereBLAS;
 use crate::vulkan_assets::{AddVulkanAsset, VkAssetCleanupPlaybook, VulkanAssets};
 use crate::vulkan_cleanup::{VkCleanup, VkCleanupEvent, VkCleanupPlugin};
 use crate::{render_device::RenderDevice, swapchain::Swapchain};
@@ -68,6 +69,7 @@ fn cleanup_render_resources(render_resources: Res<RenderResources>, cleanup: Res
     cleanup.send(VkCleanupEvent::Buffer(render_resources.uniform_buffer.handle));
 }
 
+#[repr(C)]
 pub struct UniformData {
     inverse_view: Mat4,
     inverse_proj: Mat4,
@@ -154,6 +156,7 @@ fn render(
     scene: Res<Scene>,
     mut swapchain: Query<&mut Swapchain>,
     blasses: Res<VulkanAssets<GltfMesh>>,
+    sphere_blass: Query<&SphereBLAS>,
     render_config: Res<RenderConfig>,
     mut render_resources: ResMut<RenderResources>,
     rt_pipelines: Res<VulkanAssets<RaytracingPipeline>>,
@@ -161,6 +164,7 @@ fn render(
     primary_window: Query<&Window, With<PrimaryWindow>>,
     camera: Query<(&Camera3d, Ref<Transform>, &GlobalTransform)>,
 ) {
+    let sphere_blas = sphere_blass.single();
     let mut swapchain = swapchain.single_mut();
     let (camera, camera_transform, camera_g_transform) = camera.single();
 
@@ -246,7 +250,7 @@ fn render(
                     uniform_buffer_address: render_resources.uniform_buffer.address,
                     vertex_buffer_address: blas.vertex_buffer.address,
                     index_buffer_address: blas.index_buffer.address,
-                    sphere_buffer_address: 0,
+                    sphere_buffer_address: sphere_blas.sphere_buffer.address,
                 };
                 device.device.cmd_push_constants(
                     cmd_buffer,

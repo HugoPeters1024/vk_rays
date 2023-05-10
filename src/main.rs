@@ -1,4 +1,5 @@
 mod acceleration_structure;
+mod sphere_blas;
 mod camera;
 mod composed_asset;
 mod gltf_assets;
@@ -29,6 +30,7 @@ use rand::RngCore;
 use rasterization_pipeline::RasterizationPipeline;
 use render_plugin::RenderConfig;
 use shader::Shader;
+use sphere_blas::{SphereBLAS, Sphere};
 
 use crate::raytracing_pipeline::RaytracingPipeline;
 use crate::render_plugin::RenderPlugin;
@@ -88,9 +90,12 @@ fn main() {
 fn startup(
     mut commands: Commands,
     assets: Res<AssetServer>,
+    device: Res<render_device::RenderDevice>,
     mut rt_pipelines: ResMut<Assets<RaytracingPipeline>>,
     mut rast_pipelines: ResMut<Assets<RasterizationPipeline>>,
 ) {
+    let sphere = Sphere::new(Vec3::splat(0.0), 0.5);
+    commands.spawn(SphereBLAS::make_one(&sphere, &device));
     commands.spawn(Camera3dBundle {
         transform: Transform::from_xyz(0.0, 0.0, -3.0),
         ..default()
@@ -103,7 +108,7 @@ fn startup(
     // floor
     commands.spawn((
         game_assets.box_mesh.clone(),
-        TransformBundle::from_transform(Transform::from_xyz(0.0, -1.0, 0.0).with_scale(Vec3::new(100.0, 0.2, 100.0))),
+        TransformBundle::from_transform(Transform::from_xyz(0.0, -1.0, 0.0).with_scale(Vec3::new(10.0, 0.2, 10.0))),
         RigidBody::Fixed,
         Collider::cuboid(0.5, 0.5, 0.5),
     ));
@@ -198,7 +203,7 @@ fn camera_clear(input: Res<Input<KeyCode>>, mut q: Query<&mut Camera3d>) {
 }
 
 fn spawn(mut commands: Commands, game_assets: Res<GameAssets>, q: Query<&MainBlock>) {
-    if q.iter().count() <  500 {
+    if q.iter().count() <  0 {
         commands.spawn((
             game_assets.box_mesh.clone(),
             TransformBundle::from_transform(
