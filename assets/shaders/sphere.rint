@@ -44,7 +44,7 @@ void main()
   AABB aabb = regs.spheres.aabbs[0];
   vec3 orig = gl_WorldRayOriginEXT;
   vec3 dir = gl_WorldRayDirectionEXT;
-  vec3 center = aabb_center(aabb);
+  vec3 center = (gl_ObjectToWorldEXT * vec4(aabb_center(aabb),1)).xyz;
   float radius = aabb_radius(aabb);
 	
  	vec2 t = gems_intersections(orig, dir, center, radius);

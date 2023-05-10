@@ -6,7 +6,7 @@ use crate::{
     gltf_assets::GltfMesh,
     render_buffer::{Buffer, BufferProvider},
     render_device::RenderDevice,
-    sphere_blas::SphereBLAS,
+    sphere_blas::{SphereBLAS, Sphere},
     vulkan_assets::{VkAssetCleanupPlaybook, VulkanAssets},
     vulkan_cleanup::{VkCleanup, VkCleanupEvent},
 };
@@ -41,21 +41,22 @@ impl Plugin for ScenePlugin {
 fn update_scene(
     cleanup: Res<VkCleanup>,
     mut scene: ResMut<Scene>,
+    gtransforms: Query<&GlobalTransform>,
     device: Res<RenderDevice>,
-    meshes: Query<(&GlobalTransform, &Handle<GltfMesh>)>,
+    meshes: Query<(Entity, &Handle<GltfMesh>)>,
     blasses: Res<VulkanAssets<GltfMesh>>,
-    spheres: Query<&SphereBLAS>,
+    sphere_blas: Res<SphereBLAS>,
+    spheres: Query<(Entity, With<Sphere>)>,
 ) {
-    let sphere = spheres.single();
+    let (sphere_e, sphere) = spheres.single();
 
     let mut resolved_blasses: Vec<(&GlobalTransform, AccelerationStructureReferenceKHR)> = Vec::new();
-    let default_transform = GlobalTransform::default();
-    resolved_blasses.push((&default_transform, sphere.get_reference()));
-    for (t, mesh) in meshes.iter() {
+    resolved_blasses.push((gtransforms.get(sphere_e).unwrap(), sphere_blas.get_reference()));
+    for (mesh_e, mesh) in meshes.iter() {
         let Some(blas) = blasses.get(&mesh) else {
             continue;
         };
-        resolved_blasses.push((t, blas.get_reference()));
+        resolved_blasses.push((gtransforms.get(mesh_e).unwrap(), blas.get_reference()));
     }
 
     let instances = resolved_blasses

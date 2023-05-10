@@ -7,33 +7,10 @@ use crate::{
     render_device::RenderDevice,
 };
 
-pub struct Sphere {
-    data: Vec4,
-}
+#[derive(Component, Default)]
+pub struct Sphere;
 
-impl Sphere {
-    pub fn new(center: Vec3, radius: f32) -> Self {
-        Self {
-            data: Vec4::new(center.x, center.y, center.z, radius),
-        }
-    }
-
-    pub fn center(&self) -> Vec3 {
-        Vec3::new(self.data.x, self.data.y, self.data.z)
-    }
-
-    pub fn radius(&self) -> f32 {
-        self.data.w
-    }
-
-    pub fn aabb(&self) -> AABB {
-        let center = self.center();
-        let radius = self.radius();
-        AABB::new(center - Vec3::splat(radius), center + Vec3::splat(radius))
-    }
-}
-
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct AABB {
     pub min_x: f32,
@@ -42,6 +19,19 @@ pub struct AABB {
     pub max_x: f32,
     pub max_y: f32,
     pub max_z: f32,
+}
+
+impl Default for AABB {
+    fn default() -> Self {
+        Self {
+            min_x: -0.5,
+            min_y: -0.5,
+            min_z: -0.5,
+            max_x: 0.5,
+            max_y: 0.5,
+            max_z: 0.5,
+        }
+    }
 }
 
 impl AABB {
@@ -65,7 +55,7 @@ impl AABB {
     }
 }
 
-#[derive(Component)]
+#[derive(Resource)]
 pub struct SphereBLAS {
     pub sphere_buffer: Buffer<AABB>,
     pub acceleration_structure: AccelerationStructure,
@@ -76,7 +66,7 @@ impl SphereBLAS {
         self.acceleration_structure.get_reference()
     }
 
-    pub fn make_one(sphere: &Sphere, device: &RenderDevice) -> Self {
+    pub fn make_one(aabb: &AABB, device: &RenderDevice) -> Self {
         let mut aabb_buffer_host: Buffer<AABB> = device.create_host_buffer(
             1,
             vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::TRANSFER_SRC,
@@ -84,7 +74,7 @@ impl SphereBLAS {
 
         {
             let mut aabb_buffer = device.map_buffer(&mut aabb_buffer_host);
-            aabb_buffer[0] = sphere.aabb();
+            aabb_buffer[0] = aabb.clone();
             dbg!(&aabb_buffer[0]);
         }
 

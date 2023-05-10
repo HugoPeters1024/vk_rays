@@ -18,7 +18,7 @@ hitAttributeEXT vec3 spherePoint;
 
 void main() {
   const AABB sphereAABB = regs.spheres.aabbs[0];
-  const vec3 center = aabb_center(sphereAABB);
+  const vec3 center = (gl_ObjectToWorldEXT * vec4(aabb_center(sphereAABB),1)).xyz;
 
   const vec3 normal = normalize(spherePoint - center);
 

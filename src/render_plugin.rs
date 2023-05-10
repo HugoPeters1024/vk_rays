@@ -4,7 +4,7 @@ use crate::rasterization_pipeline::{RasterizationPipeline, RasterizationPipeline
 use crate::raytracing_pipeline::{RaytracerRegisters, RaytracingPipeline, RaytracingPlugin};
 use crate::render_buffer::{Buffer, BufferProvider};
 use crate::scene::{Scene, ScenePlugin};
-use crate::sphere_blas::SphereBLAS;
+use crate::sphere_blas::{SphereBLAS, Sphere, AABB};
 use crate::vulkan_assets::{AddVulkanAsset, VkAssetCleanupPlaybook, VulkanAssets};
 use crate::vulkan_cleanup::{VkCleanup, VkCleanupEvent, VkCleanupPlugin};
 use crate::{render_device::RenderDevice, swapchain::Swapchain};
@@ -88,6 +88,8 @@ impl Plugin for RenderPlugin {
         let render_device = RenderDevice::from_window(whandles);
         app.world.insert_resource(render_device.clone());
 
+        app.world.insert_resource(SphereBLAS::make_one(&AABB::default(), &render_device));
+
         app.add_plugin(VkCleanupPlugin);
 
         let mut render_schedule = RenderSet::base_schedule();
@@ -153,17 +155,18 @@ fn render(
     scene: Res<Scene>,
     mut swapchain: Query<&mut Swapchain>,
     blasses: Res<VulkanAssets<GltfMesh>>,
-    sphere_blass: Query<&SphereBLAS>,
+    sphere_blas: Res<SphereBLAS>,
+    gtransforms: Query<&GlobalTransform>,
+    spheres: Query<Entity, With<Sphere>>,
     render_config: Res<RenderConfig>,
     mut render_resources: ResMut<RenderResources>,
     rt_pipelines: Res<VulkanAssets<RaytracingPipeline>>,
     rast_pipelines: Res<VulkanAssets<RasterizationPipeline>>,
     primary_window: Query<&Window, With<PrimaryWindow>>,
-    camera: Query<(&Camera3d, &GlobalTransform)>,
+    camera: Query<(Entity, &Camera3d)>,
 ) {
-    let sphere_blas = sphere_blass.single();
     let mut swapchain = swapchain.single_mut();
-    let (camera, camera_g_transform) = camera.single();
+    let (camera_e, camera) = camera.single();
 
     // wait for the previous frame to finish
     unsafe {
@@ -230,7 +233,7 @@ fn render(
                 {
                     let mut uniform_view = device.map_buffer(&mut render_resources.uniform_buffer);
                     let mut rng = rand::thread_rng();
-                    let (_, rotation, translation) = camera_g_transform.to_scale_rotation_translation();
+                    let (_, rotation, translation) = gtransforms.get(camera_e).unwrap().to_scale_rotation_translation();
                     let camera_view = Mat4::from_quat(rotation) * Mat4::from_translation(translation);
                     let projection = Mat4::perspective_rh(
                         camera.fov,

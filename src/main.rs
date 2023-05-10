@@ -78,6 +78,7 @@ fn main() {
         })
         .add_startup_system(startup)
         .add_system(camera_clear)
+        .add_system(move_sphere)
         .add_system(report_fps)
         .add_system(player_controls)
         .add_system(spawn.run_if(on_timer(Duration::from_secs_f32(0.02))))
@@ -94,8 +95,7 @@ fn startup(
     mut rt_pipelines: ResMut<Assets<RaytracingPipeline>>,
     mut rast_pipelines: ResMut<Assets<RasterizationPipeline>>,
 ) {
-    let sphere = Sphere::new(Vec3::splat(0.0), 0.5);
-    commands.spawn(SphereBLAS::make_one(&sphere, &device));
+    commands.spawn((Sphere, TransformBundle::default()));
     commands.spawn(Camera3dBundle {
         transform: Transform::from_xyz(0.0, 0.0, -3.0),
         ..default()
@@ -198,6 +198,16 @@ fn camera_clear(input: Res<Input<KeyCode>>, mut q: Query<&mut Camera3d>) {
     if input.just_pressed(KeyCode::Space) {
         camera.clear = !camera.clear;
     }
+}
+
+fn move_sphere(time: Res<Time>, mut q: Query<&mut Transform, With<Sphere>>) {
+    let mut transform = q.single_mut();
+    transform.translation = 3.0
+        * Vec3::new(
+            (time.elapsed_seconds() * 1.5).sin(),
+            0.0,
+            (time.elapsed_seconds() * 1.5).cos(),
+        );
 }
 
 fn spawn(mut commands: Commands, game_assets: Res<GameAssets>, q: Query<&MainBlock>) {
