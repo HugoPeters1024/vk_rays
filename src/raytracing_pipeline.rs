@@ -31,6 +31,32 @@ pub struct RaytracingPipeline {
     pub sphere_hit_shader: Handle<Shader>,
 }
 
+pub type RTGroupHandle = [u8; 32];
+
+#[derive(Clone, Copy)]
+#[repr(C)]
+pub struct SBTRegionRaygen {
+    pub handle: RTGroupHandle,
+}
+
+#[derive(Clone, Copy)]
+#[repr(C)]
+pub struct SBTRegionMiss {
+    pub handle: RTGroupHandle,
+}
+
+#[derive(Clone, Copy)]
+#[repr(C)]
+pub struct SBTRegionHitTriangle {
+    pub handle: RTGroupHandle,
+}
+
+#[derive(Pod, Zeroable, Clone, Copy)]
+#[repr(C)]
+pub struct SBTRegionHitSphere {
+    pub handle: RTGroupHandle,
+}
+
 impl ComposedAsset for RaytracingPipeline {
     type DepType = Shader;
     fn get_deps(&self) -> Vec<&Handle<Self::DepType>> {
@@ -118,15 +144,7 @@ pub struct VkRaytracingPipeline {
 }
 
 struct ShaderGroupSizes {
-    nr_raygen: u32,
-    nr_miss: u32,
     nr_hit: u32,
-}
-
-impl ShaderGroupSizes {
-    pub fn sum(&self) -> u32 {
-        self.nr_raygen + self.nr_miss + self.nr_hit
-    }
 }
 
 pub struct SBT {
@@ -257,13 +275,7 @@ fn create_raytracing_pipeline(
         );
     }
 
-    let shader_group_sizes = ShaderGroupSizes {
-        nr_raygen: 1,
-        nr_miss: 1,
-        nr_hit: 2,
-    };
-
-    assert_eq!(shader_group_sizes.sum(), shader_groups.len() as u32);
+    let shader_group_sizes = ShaderGroupSizes { nr_hit: 2 };
 
     let pipeline_info = vk::RayTracingPipelineCreateInfoKHR::builder()
         .stages(&shader_stages)
@@ -296,8 +308,12 @@ fn create_raytracing_pipeline(
 fn create_shader_binding_table(device: &RenderDevice, pipeline: vk::Pipeline, group_sizes: ShaderGroupSizes) -> SBT {
     let rtprops = get_raytracing_properties(&device);
 
-    let handle_count = group_sizes.sum();
+    let handle_count = group_sizes.nr_hit + 2;
     let handle_size = rtprops.shader_group_handle_size;
+    assert!(
+        handle_size as usize == std::mem::size_of::<RTGroupHandle>(),
+        "at the moment we only support 128-bit handles (at time of writing all devices have this"
+    );
     let handle_size_aligned = vk_utils::aligned_size(handle_size, rtprops.shader_group_handle_alignment);
 
     let mut raygen_region = vk::StridedDeviceAddressRegionKHR::default();
@@ -308,12 +324,19 @@ fn create_shader_binding_table(device: &RenderDevice, pipeline: vk::Pipeline, gr
     raygen_region.size = raygen_region.stride;
 
     miss_region.stride = handle_size_aligned as u64;
-    miss_region.size = vk_utils::aligned_size(
-        group_sizes.nr_miss * miss_region.stride as u32,
-        rtprops.shader_group_base_alignment,
-    ) as u64;
+    miss_region.size = vk_utils::aligned_size(miss_region.stride as u32, rtprops.shader_group_base_alignment) as u64;
 
-    hit_region.stride = handle_size_aligned as u64;
+    let hit_entry_size = vk_utils::aligned_size(
+        [
+            std::mem::size_of::<SBTRegionHitTriangle>(),
+            std::mem::size_of::<SBTRegionHitSphere>(),
+        ]
+        .into_iter()
+        .max()
+        .unwrap() as u32,
+        rtprops.shader_group_base_alignment,
+    );
+    hit_region.stride = hit_entry_size as u64;
     hit_region.size = vk_utils::aligned_size(
         group_sizes.nr_hit * hit_region.stride as u32,
         rtprops.shader_group_base_alignment,
@@ -321,12 +344,19 @@ fn create_shader_binding_table(device: &RenderDevice, pipeline: vk::Pipeline, gr
 
     let handle_data_size = handle_count * handle_size;
 
-    let handle_data = unsafe {
+    let handles: Vec<RTGroupHandle> = unsafe {
         device
             .exts
             .rt_pipeline
-            .get_ray_tracing_shader_group_handles(pipeline, 0, group_sizes.sum(), handle_data_size as usize)
+            .get_ray_tracing_shader_group_handles(pipeline, 0, handle_count, handle_data_size as usize)
             .unwrap()
+            .chunks(handle_size as usize)
+            .map(|chunk| {
+                let mut handle = RTGroupHandle::default();
+                handle.copy_from_slice(chunk);
+                handle
+            })
+            .collect()
     };
 
     let sbt_size = raygen_region.size + miss_region.size + hit_region.size;
@@ -339,34 +369,36 @@ fn create_shader_binding_table(device: &RenderDevice, pipeline: vk::Pipeline, gr
     {
         let mut sbt_buffer = device.map_buffer(&mut sbt_buffer);
 
+        let raygen_region_data = SBTRegionRaygen {
+            handle: handles[0],
+        };
+
+        let miss_region_data = SBTRegionMiss {
+            handle: handles[1],
+        };
+
         // memcpy syntax
         unsafe {
-            let mut src = handle_data.as_ptr();
             let mut dst = sbt_buffer.as_ptr_mut();
 
             // raygen region (only a handle)
-            std::ptr::copy_nonoverlapping::<u8>(src, dst, handle_size as usize);
+            (dst as *mut SBTRegionRaygen).write(raygen_region_data);
+            dst = dst.add(raygen_region.size as usize);
 
             // miss region (comes after the raygen region)
-            dst = sbt_buffer.as_ptr_mut().add(raygen_region.size as usize);
-            src = src.add(handle_size as usize);
+            (dst as *mut SBTRegionMiss).write(miss_region_data);
+            dst = dst.add(miss_region.size as usize);
 
-            for _ in 0..group_sizes.nr_miss {
-                std::ptr::copy_nonoverlapping::<u8>(src, dst, handle_size as usize);
-                src = src.add(handle_size as usize);
-                dst = dst.add(miss_region.stride as usize);
-            }
+            // hit region (comes after the raygen region)
+            (dst as *mut SBTRegionHitTriangle).write(SBTRegionHitTriangle {
+                handle: handles[2],
+            });
+            dst = dst.add(hit_region.stride as usize);
 
-            // hit region (comes after the raygen + miss region)
-            dst = sbt_buffer
-                .as_ptr_mut()
-                .add(raygen_region.size as usize + miss_region.size as usize);
-
-            for _ in 0..group_sizes.nr_hit {
-                std::ptr::copy_nonoverlapping::<u8>(src, dst, handle_size as usize);
-                src = src.add(handle_size as usize);
-                dst = dst.add(hit_region.stride as usize);
-            }
+            (dst as *mut SBTRegionHitSphere).write(SBTRegionHitSphere {
+                handle: handles[2],
+            });
+            dst = dst.add(hit_region.stride as usize);
         }
     }
 

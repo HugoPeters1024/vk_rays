@@ -30,7 +30,7 @@ use rand::RngCore;
 use rasterization_pipeline::RasterizationPipeline;
 use render_plugin::RenderConfig;
 use shader::Shader;
-use sphere_blas::{Sphere, SphereBLAS};
+use sphere_blas::Sphere;
 
 use crate::raytracing_pipeline::RaytracingPipeline;
 use crate::render_plugin::RenderPlugin;

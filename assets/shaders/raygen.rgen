@@ -19,7 +19,7 @@ layout(push_constant, std430) uniform Registers {
 layout(location = 0) rayPayloadEXT HitPayload payload;
 
 uint getSeed() {
-    return wang_hash(gl_LaunchIDEXT.x + gl_LaunchSizeEXT.x * gl_LaunchIDEXT.y) * regs.un.entropy;
+    return wang_hash(gl_LaunchIDEXT.x + gl_LaunchSizeEXT.x * gl_LaunchIDEXT.y + 117 * regs.un.entropy);
 }
 
 void main() {
@@ -36,27 +36,29 @@ void main() {
   float tmin = 0.001;
   float tmax = 100.0;
 
-
-  vec3 origin = start_origin;
-  vec3 direction = start_direction;
-
   vec3 accum = vec3(0.0);
-  vec3 mask = vec3(1.0);
+  const uint MAX_SAMPLES = 1;
 
+  for(uint s = 0; s<MAX_SAMPLES; s++) {
+    vec3 mask = vec3(1.0);
+    vec3 origin = start_origin;
+    vec3 direction = start_direction;
 
-  for(uint bounce=0; bounce<8; bounce++) {
-    traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xFF, 0, 0, 0, origin, tmin, direction, tmax, 0);
-    accum += mask * payload.emission;
-    if (payload.t == 0) {
-      break;
+    for(uint bounce=0; bounce<8; bounce++) {
+      traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xFF, 0, 0, 0, origin, tmin, direction, tmax, 0);
+      accum += mask * payload.emission;
+      if (payload.t == 0) {
+        break;
+      }
+
+      mask *= payload.color;
+
+      origin = origin + (payload.t - EPS) * direction;
+      vec3 reflect_dir = reflect(direction, payload.normal);
+      direction = mix(reflect_dir, alignToNormalZUP(SampleHemisphereCosine(), payload.normal), payload.roughness);
     }
-
-    mask *= payload.color;
-
-    origin = origin + (payload.t - EPS) * direction;
-    direction = mix(payload.normal, alignToNormalZUP(SampleHemisphereCosine(), payload.normal), payload.roughness);
   }
 
   vec4 old_image = regs.un.entropy == 666 ? vec4(0) : imageLoad(render_target, ivec2(gl_LaunchIDEXT.xy));
-  imageStore(render_target, ivec2(gl_LaunchIDEXT.xy), old_image + vec4(accum, 1.0));
+  imageStore(render_target, ivec2(gl_LaunchIDEXT.xy), old_image + vec4(accum / float(MAX_SAMPLES), 1.0));
 }

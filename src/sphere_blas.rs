@@ -45,14 +45,6 @@ impl AABB {
             max_z: max.z,
         }
     }
-
-    pub fn min(&self) -> Vec3 {
-        Vec3::new(self.min_x, self.min_y, self.min_z)
-    }
-
-    pub fn max(&self) -> Vec3 {
-        Vec3::new(self.max_x, self.max_y, self.max_z)
-    }
 }
 
 #[derive(Resource)]

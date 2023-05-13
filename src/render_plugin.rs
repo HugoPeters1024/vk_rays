@@ -157,7 +157,6 @@ fn render(
     blasses: Res<VulkanAssets<GltfMesh>>,
     sphere_blas: Res<SphereBLAS>,
     gtransforms: Query<&GlobalTransform>,
-    spheres: Query<Entity, With<Sphere>>,
     render_config: Res<RenderConfig>,
     mut render_resources: ResMut<RenderResources>,
     rt_pipelines: Res<VulkanAssets<RaytracingPipeline>>,

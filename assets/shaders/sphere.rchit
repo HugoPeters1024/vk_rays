@@ -28,5 +28,5 @@ void main() {
   payload.t = gl_HitTEXT;
   payload.normal = normal;
   payload.emission = vec3(0.0);
-  payload.roughness = 0.06f;
+  payload.roughness = 0.01f;
 }
