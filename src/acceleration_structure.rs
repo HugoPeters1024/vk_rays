@@ -6,19 +6,19 @@ use crate::{
 };
 
 #[repr(C)]
-#[repr(align(16))]
+#[repr(align(8))]
 pub struct Vertex {
-    pub pos: [f32; 4],
-    pub normal: [f32; 4],
+    pub pos: [f32; 3],
+    pub normal: [f32; 3],
 }
 
-pub struct BLAS {
+pub struct TriangleBLAS {
     pub vertex_buffer: Buffer<Vertex>,
     pub index_buffer: Buffer<u32>,
     pub acceleration_structure: AccelerationStructure,
 }
 
-impl BLAS {
+impl TriangleBLAS {
     pub fn get_reference(&self) -> vk::AccelerationStructureReferenceKHR {
         self.acceleration_structure.get_reference()
     }

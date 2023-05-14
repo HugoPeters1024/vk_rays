@@ -4,7 +4,8 @@ use crate::rasterization_pipeline::{RasterizationPipeline, RasterizationPipeline
 use crate::raytracing_pipeline::{RaytracerRegisters, RaytracingPipeline, RaytracingPlugin};
 use crate::render_buffer::{Buffer, BufferProvider};
 use crate::scene::{Scene, ScenePlugin};
-use crate::sphere_blas::{SphereBLAS, Sphere, AABB};
+use crate::shader_binding_table::{SBT, SBTPlugin};
+use crate::sphere_blas::{SphereBLAS, AABB};
 use crate::vulkan_assets::{AddVulkanAsset, VkAssetCleanupPlaybook, VulkanAssets};
 use crate::vulkan_cleanup::{VkCleanup, VkCleanupEvent, VkCleanupPlugin};
 use crate::{render_device::RenderDevice, swapchain::Swapchain};
@@ -101,6 +102,7 @@ impl Plugin for RenderPlugin {
         app.add_plugin(swapchain::SwapchainPlugin);
         app.add_plugin(RaytracingPlugin);
         app.add_plugin(RasterizationPipelinePlugin);
+        app.add_plugin(SBTPlugin);
 
         app.add_system(run_render_schedule);
         app.add_system(shutdown.in_base_set(CoreSet::Last));
@@ -161,6 +163,7 @@ fn render(
     mut render_resources: ResMut<RenderResources>,
     rt_pipelines: Res<VulkanAssets<RaytracingPipeline>>,
     rast_pipelines: Res<VulkanAssets<RasterizationPipeline>>,
+    sbt: Res<SBT>,
     primary_window: Query<&Window, With<PrimaryWindow>>,
     camera: Query<(Entity, &Camera3d)>,
 ) {
@@ -276,16 +279,18 @@ fn render(
                     &[],
                 );
 
-                device.exts.rt_pipeline.cmd_trace_rays(
-                    cmd_buffer,
-                    &compiled.shader_binding_table.raygen_region,
-                    &compiled.shader_binding_table.miss_region,
-                    &compiled.shader_binding_table.hit_region,
-                    &vk::StridedDeviceAddressRegionKHR::default(),
-                    swapchain.width,
-                    swapchain.height,
-                    1,
-                )
+                if sbt.data.address != 0 {
+                    device.exts.rt_pipeline.cmd_trace_rays(
+                        cmd_buffer,
+                        &sbt.raygen_region,
+                        &sbt.miss_region,
+                        &sbt.hit_region,
+                        &vk::StridedDeviceAddressRegionKHR::default(),
+                        swapchain.width,
+                        swapchain.height,
+                        1,
+                    )
+                }
             }
 
             // make render target available for sampling

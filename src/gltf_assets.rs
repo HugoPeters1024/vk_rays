@@ -5,7 +5,7 @@ use bevy::{
 };
 
 use crate::{
-    acceleration_structure::{allocate_acceleration_structure, Vertex, BLAS},
+    acceleration_structure::{allocate_acceleration_structure, Vertex, TriangleBLAS},
     render_buffer::{Buffer, BufferProvider},
     render_device::RenderDevice,
     vulkan_assets::VulkanAsset,
@@ -81,7 +81,7 @@ struct GeometryDescr {
 
 impl VulkanAsset for GltfMesh {
     type ExtractedAsset = GltfMesh;
-    type PreparedAsset = BLAS;
+    type PreparedAsset = TriangleBLAS;
     type Param = ();
 
     fn extract_asset(
@@ -238,7 +238,7 @@ impl VulkanAsset for GltfMesh {
             )
         };
 
-        let blas = BLAS {
+        let blas = TriangleBLAS {
             vertex_buffer: vertex_buffer_device,
             index_buffer: index_buffer_device,
             acceleration_structure,

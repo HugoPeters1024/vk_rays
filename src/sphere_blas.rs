@@ -67,7 +67,6 @@ impl SphereBLAS {
         {
             let mut aabb_buffer = device.map_buffer(&mut aabb_buffer_host);
             aabb_buffer[0] = aabb.clone();
-            dbg!(&aabb_buffer[0]);
         }
 
         let aabb_buffer_device: Buffer<AABB> = device.create_device_buffer(

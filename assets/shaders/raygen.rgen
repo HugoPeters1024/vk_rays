@@ -33,11 +33,11 @@ void main() {
   vec3 start_direction = (regs.un.inverse_view * vec4(normalize(target), 0)).xyz;
 
 
-  float tmin = 0.001;
+  float tmin = 0.0001;
   float tmax = 100.0;
 
   vec3 accum = vec3(0.0);
-  const uint MAX_SAMPLES = 1;
+  const uint MAX_SAMPLES = 8;
 
   for(uint s = 0; s<MAX_SAMPLES; s++) {
     vec3 mask = vec3(1.0);
@@ -53,7 +53,7 @@ void main() {
 
       mask *= payload.color;
 
-      origin = origin + (payload.t - EPS) * direction;
+      origin = origin + payload.t * direction;
       vec3 reflect_dir = reflect(direction, payload.normal);
       direction = mix(reflect_dir, alignToNormalZUP(SampleHemisphereCosine(), payload.normal), payload.roughness);
     }

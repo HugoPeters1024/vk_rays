@@ -71,11 +71,11 @@ struct Vertex {
 };
 
 
-layout (buffer_reference, std430, buffer_reference_align = 16) buffer VertexData {
+layout (buffer_reference, scalar, buffer_reference_align = 8) buffer VertexData {
   Vertex vertices[];
 };
 
-layout (buffer_reference, std430, buffer_reference_align = 16) buffer IndexData {
+layout (buffer_reference, scalar, buffer_reference_align = 8) buffer IndexData {
   uint indices[];
 };
 

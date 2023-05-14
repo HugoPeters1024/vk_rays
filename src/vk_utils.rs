@@ -21,3 +21,17 @@ pub fn transition_image_layout(
         device.exts.sync2.cmd_pipeline_barrier2(cmd_buffer, &barrier_info);
     }
 }
+
+pub fn get_raytracing_properties(device: &RenderDevice) -> vk::PhysicalDeviceRayTracingPipelinePropertiesKHR {
+    let mut raytracing_properties = vk::PhysicalDeviceRayTracingPipelinePropertiesKHR::default();
+    let mut properties2 = vk::PhysicalDeviceProperties2KHR::builder()
+        .push_next(&mut raytracing_properties)
+        .build();
+    unsafe {
+        device
+            .instance
+            .get_physical_device_properties2(device.physical_device, &mut properties2)
+    }
+    raytracing_properties
+}
+

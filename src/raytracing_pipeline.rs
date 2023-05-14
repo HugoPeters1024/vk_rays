@@ -5,9 +5,9 @@ use bevy::reflect::TypeUuid;
 use bytemuck_derive::{Pod, Zeroable};
 
 use crate::composed_asset::{ComposedAsset, ComposedAssetAppExtension};
-use crate::render_buffer::{Buffer, BufferProvider};
 use crate::render_device::RenderDevice;
 use crate::shader::{Shader, ShaderProvider};
+use crate::shader_binding_table::RTGroupHandle;
 use crate::vk_utils;
 use crate::vulkan_assets::{AddVulkanAsset, VulkanAsset};
 use crate::vulkan_cleanup::{VkCleanup, VkCleanupEvent};
@@ -29,32 +29,6 @@ pub struct RaytracingPipeline {
     pub triangle_hit_shader: Handle<Shader>,
     pub sphere_int_shader: Handle<Shader>,
     pub sphere_hit_shader: Handle<Shader>,
-}
-
-pub type RTGroupHandle = [u8; 32];
-
-#[derive(Clone, Copy)]
-#[repr(C)]
-pub struct SBTRegionRaygen {
-    pub handle: RTGroupHandle,
-}
-
-#[derive(Clone, Copy)]
-#[repr(C)]
-pub struct SBTRegionMiss {
-    pub handle: RTGroupHandle,
-}
-
-#[derive(Clone, Copy)]
-#[repr(C)]
-pub struct SBTRegionHitTriangle {
-    pub handle: RTGroupHandle,
-}
-
-#[derive(Pod, Zeroable, Clone, Copy)]
-#[repr(C)]
-pub struct SBTRegionHitSphere {
-    pub handle: RTGroupHandle,
 }
 
 impl ComposedAsset for RaytracingPipeline {
@@ -96,7 +70,7 @@ impl VulkanAsset for RaytracingPipeline {
     fn prepare_asset(device: &RenderDevice, asset: Self::ExtractedAsset) -> Self::PreparedAsset {
         let (raygen_shader, triangle_hit_shader, miss_shader, sphere_int_shader, sphere_hit_shader) = asset;
         println!("creating RT pipeline");
-        let (descriptor_set_layout, pipeline_layout, vk_pipeline, shader_group_sizes) = create_raytracing_pipeline(
+        let (descriptor_set_layout, pipeline_layout, vk_pipeline) = create_raytracing_pipeline(
             &device,
             &raygen_shader,
             &triangle_hit_shader,
@@ -104,7 +78,30 @@ impl VulkanAsset for RaytracingPipeline {
             &sphere_int_shader,
             &sphere_hit_shader,
         );
-        let shader_binding_table = create_shader_binding_table(&device, vk_pipeline, shader_group_sizes);
+
+        let rtprops = vk_utils::get_raytracing_properties(&device);
+        let handle_size = rtprops.shader_group_handle_size;
+        assert!(
+            handle_size as usize == std::mem::size_of::<RTGroupHandle>(),
+            "at the time we only support 128-bit handles (at time of writing all devices have this)"
+        );
+
+        let handle_count = 4;
+        let handle_data_size = handle_count * handle_size;
+        let handles: Vec<RTGroupHandle> = unsafe {
+            device
+                .exts
+                .rt_pipeline
+                .get_ray_tracing_shader_group_handles(vk_pipeline, 0, handle_count, handle_data_size as usize)
+                .unwrap()
+                .chunks(handle_size as usize)
+                .map(|chunk| {
+                    let mut handle = RTGroupHandle::default();
+                    handle.copy_from_slice(chunk);
+                    handle
+                })
+                .collect()
+        };
 
         let descriptor_set_alloc_info = vk::DescriptorSetAllocateInfo::builder()
             .descriptor_pool(device.descriptor_pool)
@@ -123,7 +120,10 @@ impl VulkanAsset for RaytracingPipeline {
             pipeline_layout,
             descriptor_set_layout,
             descriptor_set,
-            shader_binding_table,
+            raygen_handle: handles[0],
+            miss_handle: handles[1],
+            triangle_hit_handle: handles[2],
+            sphere_hit_handle: handles[3],
         }
     }
 
@@ -131,7 +131,6 @@ impl VulkanAsset for RaytracingPipeline {
         cleanup.send(VkCleanupEvent::Pipeline(asset.vk_pipeline));
         cleanup.send(VkCleanupEvent::PipelineLayout(asset.pipeline_layout));
         cleanup.send(VkCleanupEvent::DescriptorSetLayout(asset.descriptor_set_layout));
-        cleanup.send(VkCleanupEvent::Buffer(asset.shader_binding_table.data.handle));
     }
 }
 
@@ -140,18 +139,10 @@ pub struct VkRaytracingPipeline {
     pub pipeline_layout: vk::PipelineLayout,
     pub descriptor_set_layout: vk::DescriptorSetLayout,
     pub descriptor_set: vk::DescriptorSet,
-    pub shader_binding_table: SBT,
-}
-
-struct ShaderGroupSizes {
-    nr_hit: u32,
-}
-
-pub struct SBT {
-    pub raygen_region: vk::StridedDeviceAddressRegionKHR,
-    pub miss_region: vk::StridedDeviceAddressRegionKHR,
-    pub hit_region: vk::StridedDeviceAddressRegionKHR,
-    pub data: Buffer<u8>,
+    pub raygen_handle: RTGroupHandle,
+    pub miss_handle: RTGroupHandle,
+    pub triangle_hit_handle: RTGroupHandle,
+    pub sphere_hit_handle: RTGroupHandle,
 }
 
 pub struct RaytracingPlugin;
@@ -170,12 +161,7 @@ fn create_raytracing_pipeline(
     miss_shader: &Shader,
     sphere_int_shader: &Shader,
     sphere_hit_shader: &Shader,
-) -> (
-    vk::DescriptorSetLayout,
-    vk::PipelineLayout,
-    vk::Pipeline,
-    ShaderGroupSizes,
-) {
+) -> (vk::DescriptorSetLayout, vk::PipelineLayout, vk::Pipeline) {
     let bindings = [
         vk::DescriptorSetLayoutBinding::builder()
             .binding(0)
@@ -275,8 +261,6 @@ fn create_raytracing_pipeline(
         );
     }
 
-    let shader_group_sizes = ShaderGroupSizes { nr_hit: 2 };
-
     let pipeline_info = vk::RayTracingPipelineCreateInfoKHR::builder()
         .stages(&shader_stages)
         .groups(&shader_groups)
@@ -302,137 +286,5 @@ fn create_raytracing_pipeline(
         }
     }
 
-    (descriptor_set_layout, pipeline_layout, pipeline, shader_group_sizes)
-}
-
-fn create_shader_binding_table(device: &RenderDevice, pipeline: vk::Pipeline, group_sizes: ShaderGroupSizes) -> SBT {
-    let rtprops = get_raytracing_properties(&device);
-
-    let handle_count = group_sizes.nr_hit + 2;
-    let handle_size = rtprops.shader_group_handle_size;
-    assert!(
-        handle_size as usize == std::mem::size_of::<RTGroupHandle>(),
-        "at the moment we only support 128-bit handles (at time of writing all devices have this"
-    );
-    let handle_size_aligned = vk_utils::aligned_size(handle_size, rtprops.shader_group_handle_alignment);
-
-    let mut raygen_region = vk::StridedDeviceAddressRegionKHR::default();
-    let mut miss_region = vk::StridedDeviceAddressRegionKHR::default();
-    let mut hit_region = vk::StridedDeviceAddressRegionKHR::default();
-
-    raygen_region.stride = vk_utils::aligned_size(handle_size_aligned, rtprops.shader_group_base_alignment) as u64;
-    raygen_region.size = raygen_region.stride;
-
-    miss_region.stride = handle_size_aligned as u64;
-    miss_region.size = vk_utils::aligned_size(miss_region.stride as u32, rtprops.shader_group_base_alignment) as u64;
-
-    let hit_entry_size = vk_utils::aligned_size(
-        [
-            std::mem::size_of::<SBTRegionHitTriangle>(),
-            std::mem::size_of::<SBTRegionHitSphere>(),
-        ]
-        .into_iter()
-        .max()
-        .unwrap() as u32,
-        rtprops.shader_group_base_alignment,
-    );
-    hit_region.stride = hit_entry_size as u64;
-    hit_region.size = vk_utils::aligned_size(
-        group_sizes.nr_hit * hit_region.stride as u32,
-        rtprops.shader_group_base_alignment,
-    ) as u64;
-
-    let handle_data_size = handle_count * handle_size;
-
-    let handles: Vec<RTGroupHandle> = unsafe {
-        device
-            .exts
-            .rt_pipeline
-            .get_ray_tracing_shader_group_handles(pipeline, 0, handle_count, handle_data_size as usize)
-            .unwrap()
-            .chunks(handle_size as usize)
-            .map(|chunk| {
-                let mut handle = RTGroupHandle::default();
-                handle.copy_from_slice(chunk);
-                handle
-            })
-            .collect()
-    };
-
-    let sbt_size = raygen_region.size + miss_region.size + hit_region.size;
-    let mut sbt_buffer = device.create_host_buffer::<u8>(sbt_size, vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR);
-
-    raygen_region.device_address = sbt_buffer.address;
-    miss_region.device_address = sbt_buffer.address + raygen_region.size;
-    hit_region.device_address = sbt_buffer.address + raygen_region.size + miss_region.size;
-
-    {
-        let mut sbt_buffer = device.map_buffer(&mut sbt_buffer);
-
-        let raygen_region_data = SBTRegionRaygen {
-            handle: handles[0],
-        };
-
-        let miss_region_data = SBTRegionMiss {
-            handle: handles[1],
-        };
-
-        // memcpy syntax
-        unsafe {
-            let mut dst = sbt_buffer.as_ptr_mut();
-
-            // raygen region (only a handle)
-            (dst as *mut SBTRegionRaygen).write(raygen_region_data);
-            dst = dst.add(raygen_region.size as usize);
-
-            // miss region (comes after the raygen region)
-            (dst as *mut SBTRegionMiss).write(miss_region_data);
-            dst = dst.add(miss_region.size as usize);
-
-            // hit region (comes after the raygen region)
-            (dst as *mut SBTRegionHitTriangle).write(SBTRegionHitTriangle {
-                handle: handles[2],
-            });
-            dst = dst.add(hit_region.stride as usize);
-
-            (dst as *mut SBTRegionHitSphere).write(SBTRegionHitSphere {
-                handle: handles[2],
-            });
-            dst = dst.add(hit_region.stride as usize);
-        }
-    }
-
-    SBT {
-        data: sbt_buffer,
-        raygen_region,
-        miss_region,
-        hit_region,
-    }
-}
-
-fn get_raytracing_properties(device: &RenderDevice) -> vk::PhysicalDeviceRayTracingPipelinePropertiesKHR {
-    let mut raytracing_properties = vk::PhysicalDeviceRayTracingPipelinePropertiesKHR::default();
-    let mut properties2 = vk::PhysicalDeviceProperties2KHR::builder()
-        .push_next(&mut raytracing_properties)
-        .build();
-    unsafe {
-        device
-            .instance
-            .get_physical_device_properties2(device.physical_device, &mut properties2)
-    }
-    raytracing_properties
-}
-
-fn get_acceleration_structure_features(device: &RenderDevice) -> vk::PhysicalDeviceAccelerationStructureFeaturesKHR {
-    let mut acceleration_structure_features = vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default();
-    let mut features2 = vk::PhysicalDeviceFeatures2KHR::builder()
-        .push_next(&mut acceleration_structure_features)
-        .build();
-    unsafe {
-        device
-            .instance
-            .get_physical_device_features2(device.physical_device, &mut features2)
-    }
-
-    acceleration_structure_features
+    (descriptor_set_layout, pipeline_layout, pipeline)
 }

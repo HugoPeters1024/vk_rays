@@ -32,16 +32,8 @@ pub struct BufferView<T> {
 }
 
 impl<T> BufferView<T> {
-    pub fn as_slice(&self) -> &[T] {
-        unsafe { std::slice::from_raw_parts(self.ptr, self.nr_elements as usize) }
-    }
-
     pub fn as_slice_mut(&mut self) -> &mut [T] {
         unsafe { std::slice::from_raw_parts_mut(self.ptr, self.nr_elements as usize) }
-    }
-
-    pub fn as_ptr(&self) -> *const T {
-        self.ptr
     }
 
     pub fn as_ptr_mut(&mut self) -> *mut T {

@@ -1,5 +1,6 @@
 mod acceleration_structure;
 mod camera;
+mod shader_binding_table;
 mod composed_asset;
 mod gltf_assets;
 mod initializers;
@@ -212,7 +213,7 @@ fn camera_clear(input: Res<Input<KeyCode>>, mut q: Query<&mut Camera3d>) {
 }
 
 fn spawn(mut commands: Commands, game_assets: Res<GameAssets>, q: Query<&MainBlock>) {
-    if q.iter().count() < 300 {
+    if q.iter().count() < 100 {
         commands.spawn((
             game_assets.box_mesh.clone(),
             TransformBundle::from_transform(

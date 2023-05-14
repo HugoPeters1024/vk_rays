@@ -8,7 +8,7 @@ use crate::{
     render_device::RenderDevice,
     sphere_blas::{Sphere, SphereBLAS},
     vulkan_assets::{VkAssetCleanupPlaybook, VulkanAssets},
-    vulkan_cleanup::{VkCleanup, VkCleanupEvent},
+    vulkan_cleanup::{VkCleanup, VkCleanupEvent}, shader_binding_table::SBT,
 };
 
 #[derive(Resource, Default)]
@@ -43,6 +43,7 @@ fn update_scene(
     mut scene: ResMut<Scene>,
     gtransforms: Query<&GlobalTransform>,
     device: Res<RenderDevice>,
+    sbt: Res<SBT>,
     meshes: Query<(Entity, &Handle<GltfMesh>)>,
     blasses: Res<VulkanAssets<GltfMesh>>,
     sphere_blas: Res<SphereBLAS>,
@@ -51,14 +52,18 @@ fn update_scene(
     let mut resolved_blasses: Vec<(u32, &GlobalTransform, AccelerationStructureReferenceKHR)> = Vec::new();
 
     for (sphere_e, _) in spheres.iter() {
-        resolved_blasses.push((1, gtransforms.get(sphere_e).unwrap(), sphere_blas.get_reference()));
+        resolved_blasses.push((0, gtransforms.get(sphere_e).unwrap(), sphere_blas.get_reference()));
     }
 
     for (mesh_e, mesh) in meshes.iter() {
         let Some(blas) = blasses.get(&mesh) else {
             continue;
         };
-        resolved_blasses.push((0, gtransforms.get(mesh_e).unwrap(), blas.get_reference()));
+
+        let Some(hit_offset) = sbt.triangle_offsets.get(&mesh.id()) else {
+            continue;
+        };
+        resolved_blasses.push((*hit_offset, gtransforms.get(mesh_e).unwrap(), blas.get_reference()));
     }
 
     let instances = resolved_blasses

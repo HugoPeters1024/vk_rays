@@ -26,7 +26,7 @@ void main() {
 
   payload.color = vec3(0.99);
   payload.t = gl_HitTEXT;
-  payload.normal = normal;
+  payload.normal = world_normal;
   payload.emission = vec3(0.0);
   payload.roughness = 0.01f;
 }

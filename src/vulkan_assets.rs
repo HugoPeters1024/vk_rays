@@ -50,6 +50,18 @@ impl<T: VulkanAsset> VulkanAssets<T> {
         assert_eq!(self.lookup.len(), 1);
         self.lookup.values().next().unwrap()
     }
+
+    pub fn get_single(&self) -> Option<&T::PreparedAsset> {
+        if self.lookup.len() == 1 {
+            Some(self.lookup.values().next().unwrap())
+        } else {
+            None
+        }
+    }
+    
+    pub fn items(&self) -> impl Iterator<Item = (&HandleId, &T::PreparedAsset)> {
+        self.lookup.iter()
+    }
 }
 
 #[derive(Default)]

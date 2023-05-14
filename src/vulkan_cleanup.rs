@@ -18,9 +18,6 @@ pub enum VkCleanupEvent {
     Buffer(vk::Buffer),
     ImageView(vk::ImageView),
     Image(vk::Image),
-    Semaphore(vk::Semaphore),
-    Fence(vk::Fence),
-    ShaderModule(vk::ShaderModule),
     Swapchain(vk::SwapchainKHR),
     AccelerationStructure(vk::AccelerationStructureKHR),
 }
@@ -59,15 +56,6 @@ impl VkCleanupEvent {
                     device.device.destroy_image(image, None);
                 }
             }
-            VkCleanupEvent::Semaphore(semaphore) => unsafe {
-                device.device.destroy_semaphore(semaphore, None);
-            },
-            VkCleanupEvent::Fence(fence) => unsafe {
-                device.device.destroy_fence(fence, None);
-            },
-            VkCleanupEvent::ShaderModule(shader_module) => unsafe {
-                device.device.destroy_shader_module(shader_module, None);
-            },
             VkCleanupEvent::Swapchain(swapchain) => unsafe {
                 device.exts.swapchain.destroy_swapchain(swapchain, None);
             },
