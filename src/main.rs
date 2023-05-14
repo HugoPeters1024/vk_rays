@@ -28,10 +28,8 @@ use bevy_rapier3d::prelude::*;
 use camera::{Camera3d, Camera3dBundle};
 use clap::Parser;
 use gltf_assets::GltfMesh;
-use rand::RngCore;
 use rasterization_pipeline::RasterizationPipeline;
 use render_plugin::RenderConfig;
-use shader::Shader;
 use sphere_blas::Sphere;
 
 use crate::raytracing_pipeline::RaytracingPipeline;
@@ -86,7 +84,7 @@ fn main() {
         .add_system(spawn.run_if(on_timer(Duration::from_secs_f32(0.02))))
         .run();
 
-    std::thread::sleep(std::time::Duration::from_millis(300));
+    std::thread::sleep(std::time::Duration::from_millis(100));
     println!("Goodbye!");
 }
 
@@ -99,7 +97,7 @@ fn startup(
     commands.spawn((
         Sphere,
         TransformBundle::from_transform(
-            Transform::from_translation(Vec3::new(0.0, 2.0, 0.0)).with_scale(Vec3::splat(2.0)),
+            Transform::from_translation(Vec3::new(0.0, 0.0, 0.0)).with_scale(Vec3::splat(2.0)),
         ),
         RigidBody::Fixed,
         Collider::ball(0.5),
@@ -107,7 +105,7 @@ fn startup(
     commands.spawn((
         Sphere,
         TransformBundle::from_transform(
-            Transform::from_translation(Vec3::new(2.5, 1.5, 0.0)).with_scale(Vec3::splat(1.5)),
+            Transform::from_translation(Vec3::new(4.5, 0.5, 0.2)).with_scale(Vec3::splat(3.0)),
         ),
         RigidBody::Fixed,
         Collider::ball(0.5),
@@ -124,7 +122,7 @@ fn startup(
     // floor
     commands.spawn((
         game_assets.box_mesh.clone(),
-        TransformBundle::from_transform(Transform::from_xyz(0.0, -1.0, 0.0).with_scale(Vec3::new(10.0, 0.2, 10.0))),
+        TransformBundle::from_transform(Transform::from_xyz(0.0, -1.0, 0.0).with_scale(Vec3::new(50.0, 0.2, 50.0))),
         RigidBody::Fixed,
         Collider::cuboid(0.5, 0.5, 0.5),
     ));
@@ -147,11 +145,14 @@ fn startup(
     });
 }
 
-fn report_fps(time: Res<Time>) {
-    let mut rng = rand::thread_rng();
-    if rng.next_u32() % 1000 == 0 {
-        println!("FPS: {}", 1.0 / time.delta_seconds());
+fn report_fps(time: Res<Time>, input: Res<Input<KeyCode>>, mut ravg: Local<f32>) {
+    if input.just_pressed(KeyCode::Tab) {
+        println!("Average FPS: {}", *ravg);
     }
+    if *ravg == f32::INFINITY {
+        *ravg = 1.0 / time.delta_seconds();
+    }
+    *ravg = *ravg * 0.98 + 0.02 * (1.0 / time.delta_seconds());
 }
 
 fn player_controls(input: Res<Input<KeyCode>>, time: Res<Time>, mut camera: Query<&mut Transform, With<Camera3d>>) {
@@ -212,16 +213,17 @@ fn camera_clear(input: Res<Input<KeyCode>>, mut q: Query<&mut Camera3d>) {
 }
 
 fn spawn(mut commands: Commands, game_assets: Res<GameAssets>, q: Query<&MainBlock>) {
-    if q.iter().count() < 1 {
+    if q.iter().count() < 300 {
         commands.spawn((
             game_assets.box_mesh.clone(),
             TransformBundle::from_transform(
                 Transform::default()
                     .with_rotation(Quat::from_rotation_y(PI / 2.0))
+                    .with_scale(Vec3::splat(rand::random::<f32>()))
                     .with_translation(Vec3::new(
-                        rand::random::<f32>() * 10.0 - 5.0,
-                        5.0,
-                        rand::random::<f32>() * 10.0 - 5.0,
+                        rand::random::<f32>() * 15.0 - 7.,
+                        rand::random::<f32>() * 15.0 - 7.5,
+                        rand::random::<f32>() * 15.0 - 7.5,
                     )),
             ),
             MainBlock,

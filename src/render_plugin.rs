@@ -1,5 +1,4 @@
 use crate::camera::Camera3d;
-use crate::gltf_assets::GltfMesh;
 use crate::rasterization_pipeline::{RasterizationPipeline, RasterizationPipelinePlugin};
 use crate::raytracing_pipeline::{RaytracerRegisters, RaytracingPipeline, RaytracingPlugin};
 use crate::render_buffer::{Buffer, BufferProvider};
@@ -96,6 +95,7 @@ pub struct UniformData {
     inverse_view: Mat4,
     inverse_proj: Mat4,
     entropy: u32,
+    should_clear: u32,
 }
 
 pub struct RenderPlugin;
@@ -201,7 +201,6 @@ fn render(
     scene: Res<Scene>,
     mut swapchain: Query<&mut Swapchain>,
     textures: Res<VulkanAssets<bevy::prelude::Image>>,
-    sphere_blas: Res<SphereBLAS>,
     gtransforms: Query<&GlobalTransform>,
     render_config: Res<RenderConfig>,
     mut render_resources: ResMut<FrameResources>,
@@ -303,11 +302,12 @@ fn render(
                         camera.min_t,
                         camera.max_t,
                     );
-                    let entropy = if camera.clear { 666 } else { rng.next_u32() };
+                    let entropy = rng.next_u32();
                     uniform_view[0] = UniformData {
                         inverse_view: camera_view.inverse(),
                         inverse_proj: projection.inverse(),
                         entropy,
+                        should_clear: camera.clear as u32,
                     };
                 }
 

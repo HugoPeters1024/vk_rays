@@ -435,6 +435,7 @@ impl Drop for RenderDeviceImpl {
             }
             self.device.destroy_fence(self.single_time_fence, None);
             self.device.destroy_sampler(self.nearest_sampler, None);
+            self.device.destroy_sampler(self.linear_sampler, None);
             self.device.destroy_descriptor_pool(self.descriptor_pool, None);
             self.device.destroy_command_pool(self.command_pool, None);
             self.device.destroy_device(None);

@@ -79,7 +79,7 @@ fn load_texture_from_bytes(device: &RenderDevice, bytes: &[u8], width: u32, heig
                 requirements,
                 location: MemoryLocation::GpuOnly,
                 linear: false,
-                allocation_scheme: AllocationScheme::GpuAllocatorManaged,
+                allocation_scheme: AllocationScheme::DedicatedImage(image_handle),
             })
             .unwrap();
 

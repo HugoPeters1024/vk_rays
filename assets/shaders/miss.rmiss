@@ -14,7 +14,6 @@ void main()
       acos(gl_WorldRayDirectionEXT.y) / PI
   );
   payload.t = 0.0;
-  payload.color = abs(gl_WorldRayDirectionEXT);
-  payload.emission = texture(skybox, uv).rgb;
+  payload.emission = min(texture(skybox, uv).rgb, vec3(400));
 }
 

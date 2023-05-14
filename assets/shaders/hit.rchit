@@ -30,12 +30,13 @@ void main()
   payload.normal = world_normal;
   payload.t = gl_HitTEXT;
   payload.color = vec3(0.7f, 0.7, 0.3);
-  g_seed = wang_hash((gl_InstanceID+2));
-  payload.color = SampleRandomColor();
+  uint seed = wang_hash((gl_InstanceID+2));
+  payload.color = SampleRandomColor(seed);
   payload.emission = vec3(0);
-  //if (gl_InstanceID % 23 == 4) {
-  //  payload.emission = vec3(37.0);
-  //}
+  if (gl_InstanceID % 20 == 5) {
+//    payload.emission = vec3(10.0) * payload.color;
+  }
   payload.roughness = 1.0f;
+  payload.transmission = 0.0f;
 }
 

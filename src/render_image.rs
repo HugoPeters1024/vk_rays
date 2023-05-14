@@ -105,7 +105,7 @@ pub fn vk_image_from_asset(device: &RenderDevice, asset: &Image) -> VkImage {
                 requirements,
                 location: MemoryLocation::GpuOnly,
                 linear: false,
-                allocation_scheme: AllocationScheme::GpuAllocatorManaged,
+                allocation_scheme: AllocationScheme::DedicatedImage(handle),
             })
             .unwrap();
 

@@ -19,12 +19,12 @@ layout(push_constant, std430) uniform Registers {
 layout(location = 0) rayPayloadEXT HitPayload payload;
 
 uint getSeed() {
-    return wang_hash(gl_LaunchIDEXT.x + gl_LaunchSizeEXT.x * gl_LaunchIDEXT.y + 117 * regs.un.entropy);
+    return wang_hash(wang_hash(gl_LaunchIDEXT.x + gl_LaunchSizeEXT.x * gl_LaunchIDEXT.y) + regs.un.entropy);
 }
 
 void main() {
-  g_seed = getSeed();
-  const vec2 pixel_center = vec2(gl_LaunchIDEXT.xy) + vec2(randf(), randf());
+  uint seed = getSeed();
+  const vec2 pixel_center = vec2(gl_LaunchIDEXT.xy) + vec2(randf(seed), randf(seed));
   const vec2 inUV = pixel_center / vec2(gl_LaunchSizeEXT.xy);
   vec2 d = inUV * 2.0 - 1.0;
 
@@ -37,7 +37,7 @@ void main() {
   float tmax = 100.0;
 
   vec3 accum = vec3(0.0);
-  const uint MAX_SAMPLES = 1;
+  const uint MAX_SAMPLES = 16;
 
   for(uint s = 0; s<MAX_SAMPLES; s++) {
     vec3 mask = vec3(1.0);
@@ -53,12 +53,52 @@ void main() {
 
       mask *= payload.color;
 
+      bool inside = dot(direction, -payload.normal) < 0;
+      if (inside) {
+        payload.normal = -payload.normal;
+      }
+
+      const vec3 sample_dir = alignToNormalZUP(SampleHemisphereCosine(seed), payload.normal);
       origin = origin + payload.t * direction;
-      vec3 reflect_dir = reflect(direction, payload.normal);
-      direction = mix(reflect_dir, alignToNormalZUP(SampleHemisphereCosine(), payload.normal), payload.roughness);
+      if (randf(seed) < payload.transmission) {
+        // calculate the eta based on whether we are inside
+        const float n1 = inside ? payload.refract_index : 1.0f;
+        const float n2 = inside ? 1.0f : payload.refract_index;
+        const float eta = n1 / n2;
+
+        const float costi = dot(payload.normal, -direction);
+        const float k = 1 - (eta* eta) * (1 - costi * costi);
+
+
+        float pReflect;
+        if (k < 0) {
+            // Total internal reflection
+            pReflect = 1;
+        } else {
+            // fresnell equation for reflection contribution
+            const float sinti = sqrt(max(0.0f, 1.0f - costi - costi));
+            const float costt = sqrt(1.0f - eta * eta * sinti * sinti);
+            const float spol = (n1 * costi - n2 * costt) / (n1 * costi + n2 * costt);
+            const float ppol = (n1 * costt - n2 * costi) / (n1 * costt + n2 * costi);
+            pReflect = 0.5f * (spol * spol + ppol * ppol);
+        }
+
+        vec3 refract_dir;
+        if (randf(seed) < pReflect) {
+            refract_dir = reflect(direction, payload.normal);
+        } else {
+            refract_dir = normalize(eta * direction + payload.normal * (eta * costi - sqrt(k)));
+        }
+
+        direction = mix(refract_dir, sample_dir, payload.roughness);
+      } else {
+        // reflection
+        vec3 reflect_dir = reflect(direction, payload.normal);
+        direction = mix(reflect_dir, sample_dir, payload.roughness);
+      }
     }
   }
 
-  vec4 old_image = regs.un.entropy == 666 ? vec4(0) : imageLoad(render_target, ivec2(gl_LaunchIDEXT.xy));
+  vec4 old_image = regs.un.should_clear != 0 ? vec4(0) : imageLoad(render_target, ivec2(gl_LaunchIDEXT.xy));
   imageStore(render_target, ivec2(gl_LaunchIDEXT.xy), old_image + vec4(accum/float(MAX_SAMPLES), 1.0));
 }

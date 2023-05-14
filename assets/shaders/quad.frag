@@ -7,8 +7,8 @@ layout (set=0, binding=0) uniform sampler2D test;
 layout(location = 0) out vec4 oColor;
 
 void main() {
-    const float gamma = 2.2f;
-    const float exposure = 0.4f;
+    const float gamma = 2.0f;
+    const float exposure = 1.0;
 
     vec4 bufferVal = texture(test, uv);
 

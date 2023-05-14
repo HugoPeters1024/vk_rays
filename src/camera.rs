@@ -13,7 +13,7 @@ pub struct Camera3d {
 impl Default for Camera3d {
     fn default() -> Self {
         Self {
-            fov: PI / 2.8,
+            fov: PI / 3.8,
             min_t: 0.0001,
             max_t: 100.0,
             clear: true,

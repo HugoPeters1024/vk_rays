@@ -19,28 +19,22 @@ uint wang_hash(in uint seed)
     return seed;
 }
 
-uint g_seed = 22;
-
-uint rand() {
-    g_seed = rand_xorshift(g_seed);
-    return g_seed;
+uint rand(inout uint seed) {
+    seed = rand_xorshift(seed);
+    return seed;
 }
 
-float randf()
+float randf(inout uint seed)
 {
-    g_seed = rand_xorshift(g_seed);
-    return g_seed * 2.3283064365387e-10f;
+    seed = rand_xorshift(seed);
+    return seed * 2.3283064365387e-10f;
 }
 
-float randf_seed(in uint seed) {
-    return wang_hash(seed) * 2.3283064365387e-10f;
-}
-
-vec3 SampleHemisphereCosine()
+vec3 SampleHemisphereCosine(inout uint seed)
 {
     const float TWO_PI = 6.28318530718;
-    float r0 = randf();
-    float r1 = randf();
+    float r0 = randf(seed);
+    float r1 = randf(seed);
     const float r = sqrt(r0);
     const float theta = TWO_PI * r1;
     const float x = r * cos(theta);
@@ -55,11 +49,11 @@ vec3 hsv2rgb(vec3 c)
     return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
 }
 
-vec3 SampleRandomColor()
+vec3 SampleRandomColor(inout uint seed)
 {
-  float h = randf();
-  float s = 0.5 + 0.5 * randf();
-  float v = 0.5 + 0.5 * randf();
+  float h = randf(seed);
+  float s = 0.5 + 0.5 * randf(seed);
+  float v = 0.5 + 0.5 * randf(seed);
   return hsv2rgb(vec3(h, s, v));
 }
 

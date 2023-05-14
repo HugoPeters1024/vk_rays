@@ -5,11 +5,6 @@
 
 #include "common.glsl"
 
-//layout(shaderRecordEXT, std430) buffer ShaderRecord
-//{
-//	SphereBuffer sphere_buffer;
-//};
-
 hitAttributeEXT vec3 sphere_point;
 
 // this method is documented in raytracing gems book

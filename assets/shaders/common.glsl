@@ -44,6 +44,8 @@ struct HitPayload {
   vec3 normal;
   vec3 emission;
   float roughness;
+  float transmission;
+  float refract_index;
 };
 
 
@@ -79,15 +81,16 @@ layout (buffer_reference, scalar, buffer_reference_align = 8) buffer IndexData {
   uint indices[];
 };
 
-layout(buffer_reference, scalar, buffer_reference_align = 16) buffer SphereData
+layout(buffer_reference, scalar, buffer_reference_align = 8) buffer SphereData
 {
 	AABB aabbs[];
 };
 
-layout (buffer_reference, std430, buffer_reference_align = 16) buffer UniformData {
+layout (buffer_reference, std430, buffer_reference_align = 8) buffer UniformData {
   mat4 inverse_view;
   mat4 inverse_proj;
   uint entropy;
+  uint should_clear;
 };
 
 
