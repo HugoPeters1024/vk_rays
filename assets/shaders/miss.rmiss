@@ -9,6 +9,6 @@ void main()
 {
   payload.t = 0.0;
   payload.color = abs(gl_WorldRayDirectionEXT);
-  payload.emission = vec3(1) * 0.08;
+  payload.emission = vec3(1) * 0.06;
 }
 

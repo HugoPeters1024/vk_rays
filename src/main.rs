@@ -1,6 +1,5 @@
 mod acceleration_structure;
 mod camera;
-mod shader_binding_table;
 mod composed_asset;
 mod gltf_assets;
 mod initializers;
@@ -12,6 +11,7 @@ mod render_image;
 mod render_plugin;
 mod scene;
 mod shader;
+mod shader_binding_table;
 mod sphere_blas;
 mod swapchain;
 mod vk_utils;
@@ -96,14 +96,16 @@ fn startup(
 ) {
     commands.spawn((
         Sphere,
-        TransformBundle::from_transform(Transform::from_translation(Vec3::new(0.0, 2.0, 0.0)).with_scale(Vec3::splat(2.0))),
+        TransformBundle::from_transform(
+            Transform::from_translation(Vec3::new(0.0, 2.0, 0.0)).with_scale(Vec3::splat(2.0)),
+        ),
         RigidBody::Fixed,
         Collider::ball(0.5),
     ));
     commands.spawn((
         Sphere,
         TransformBundle::from_transform(
-            Transform::from_translation(Vec3::new(2.5, 1.5, 0.0)).with_scale(Vec3::splat(2.0)),
+            Transform::from_translation(Vec3::new(2.5, 1.5, 0.0)).with_scale(Vec3::splat(1.5)),
         ),
         RigidBody::Fixed,
         Collider::ball(0.5),
@@ -202,6 +204,14 @@ fn player_controls(input: Res<Input<KeyCode>>, time: Res<Time>, mut camera: Quer
 
     if input.pressed(KeyCode::Right) {
         camera.rotation *= Quat::from_rotation_y(f);
+    }
+
+    if input.pressed(KeyCode::Up) {
+        camera.rotation *= Quat::from_axis_angle(sideways, f);
+    }
+    
+    if input.pressed(KeyCode::Down) {
+        camera.rotation *= Quat::from_axis_angle(sideways, -f);
     }
 }
 

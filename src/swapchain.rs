@@ -40,7 +40,6 @@ pub struct Swapchain {
     pub height: u32,
     pub image_ready_sem: vk::Semaphore,
     pub render_finished_sem: vk::Semaphore,
-    pub fence: vk::Fence,
     pub current_image_idx: usize,
     pub render_target: VkImage,
     render_target_needs_transition: bool,
@@ -54,9 +53,6 @@ impl Swapchain {
             let image_ready_sem = device.device.create_semaphore(&semaphore_info, None).unwrap();
             let render_finished_sem = device.device.create_semaphore(&semaphore_info, None).unwrap();
 
-            let fence_info = vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::SIGNALED);
-            let fence = device.device.create_fence(&fence_info, None).unwrap();
-
             let mut ret = Self {
                 cleanup,
                 device,
@@ -68,7 +64,6 @@ impl Swapchain {
                 height: 0,
                 image_ready_sem,
                 render_finished_sem,
-                fence,
                 current_image_idx: 0,
                 render_target: VkImage::null(),
                 render_target_needs_transition: true,
@@ -226,7 +221,6 @@ impl Drop for Swapchain {
         unsafe {
             dv.destroy_image_view(self.render_target.view, None);
             dv.destroy_image(self.render_target.handle, None);
-            dv.destroy_fence(self.fence, None);
             dv.destroy_semaphore(self.render_finished_sem, None);
             dv.destroy_semaphore(self.image_ready_sem, None);
             for view in self.views.iter() {

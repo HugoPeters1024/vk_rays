@@ -6,12 +6,6 @@
 #include "rand.glsl"
 #include "common.glsl"
 
-layout(push_constant, std430) uniform Registers {
-  UniformData un;
-  VertexData  vd;
-  IndexData   id;
-} regs;
-
 layout(location = 0) rayPayloadInEXT HitPayload payload;
 
 hitAttributeEXT vec2 attribs;
@@ -40,7 +34,7 @@ void main()
   payload.color = SampleRandomColor();
   payload.emission = vec3(0);
   if (gl_InstanceID % 23 == 4) {
-    payload.emission = vec3(47.0);
+    payload.emission = vec3(37.0);
   }
   payload.roughness = 1.0f;
 }

@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use crate::{
     acceleration_structure::{allocate_acceleration_structure, AccelerationStructure},
     render_buffer::{Buffer, BufferProvider},
-    render_device::RenderDevice,
+    render_device::RenderDevice, vulkan_cleanup::{VkCleanup, VkCleanupEvent},
 };
 
 #[derive(Component, Default)]
@@ -160,4 +160,10 @@ impl SphereBLAS {
             acceleration_structure,
         }
     }
+}
+
+pub fn cleanup_sphere_blas(sphere_blas: Res<SphereBLAS>, cleanup: Res<VkCleanup>) {
+    cleanup.send(VkCleanupEvent::AccelerationStructure(sphere_blas.acceleration_structure.handle));
+    cleanup.send(VkCleanupEvent::Buffer(sphere_blas.acceleration_structure.buffer.handle));
+    cleanup.send(VkCleanupEvent::Buffer(sphere_blas.sphere_buffer.handle));
 }

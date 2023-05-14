@@ -4,8 +4,8 @@ use crate::rasterization_pipeline::{RasterizationPipeline, RasterizationPipeline
 use crate::raytracing_pipeline::{RaytracerRegisters, RaytracingPipeline, RaytracingPlugin};
 use crate::render_buffer::{Buffer, BufferProvider};
 use crate::scene::{Scene, ScenePlugin};
-use crate::shader_binding_table::{SBT, SBTPlugin};
-use crate::sphere_blas::{SphereBLAS, AABB};
+use crate::shader_binding_table::{SBTPlugin, SBT};
+use crate::sphere_blas::{cleanup_sphere_blas, SphereBLAS, AABB};
 use crate::vulkan_assets::{AddVulkanAsset, VkAssetCleanupPlaybook, VulkanAssets};
 use crate::vulkan_cleanup::{VkCleanup, VkCleanupEvent, VkCleanupPlugin};
 use crate::{render_device::RenderDevice, swapchain::Swapchain};
@@ -59,12 +59,35 @@ pub struct RenderConfig {
 }
 
 #[derive(Resource)]
-pub struct RenderResources {
-    pub uniform_buffer: Buffer<UniformData>,
+pub struct FrameResources {
+    per_frame: Vec<RenderResources>,
+    current_frame: usize,
 }
 
-fn cleanup_render_resources(render_resources: Res<RenderResources>, cleanup: Res<VkCleanup>) {
-    cleanup.send(VkCleanupEvent::Buffer(render_resources.uniform_buffer.handle));
+impl FrameResources {
+    pub fn get(&self) -> &RenderResources {
+        &self.per_frame[self.current_frame]
+    }
+
+    pub fn get_mut(&mut self) -> &mut RenderResources {
+        &mut self.per_frame[self.current_frame]
+    }
+
+    fn cycle(&mut self) {
+        self.current_frame = (self.current_frame + 1) % self.per_frame.len();
+    }
+}
+
+pub struct RenderResources {
+    pub uniform_buffer: Buffer<UniformData>,
+    pub fence: vk::Fence,
+}
+
+fn cleanup_render_resources(render_resources: Res<FrameResources>, cleanup: Res<VkCleanup>) {
+    for res in &render_resources.per_frame {
+        cleanup.send(VkCleanupEvent::Buffer(res.uniform_buffer.handle));
+        cleanup.send(VkCleanupEvent::Fence(res.fence));
+    }
 }
 
 #[repr(C)]
@@ -89,9 +112,10 @@ impl Plugin for RenderPlugin {
         let render_device = RenderDevice::from_window(whandles);
         app.world.insert_resource(render_device.clone());
 
-        app.world.insert_resource(SphereBLAS::make_one(&AABB::default(), &render_device));
-
         app.add_plugin(VkCleanupPlugin);
+
+        app.world
+            .insert_resource(SphereBLAS::make_one(&AABB::default(), &render_device));
 
         let mut render_schedule = RenderSet::base_schedule();
         render_schedule.add_system(wait_for_frame_finish.in_set(RenderSet::Prepare));
@@ -122,10 +146,22 @@ impl Plugin for RenderPlugin {
         app.world
             .get_resource_mut::<VkAssetCleanupPlaybook>()
             .unwrap()
-            .add_system(cleanup_render_resources);
+            .add_system(cleanup_render_resources)
+            .add_system(cleanup_sphere_blas);
 
-        app.world.insert_resource(RenderResources {
-            uniform_buffer: render_device.create_host_buffer::<UniformData>(1, vk::BufferUsageFlags::UNIFORM_BUFFER),
+        let mk_resources = || {
+            let uniform_buffer =
+                render_device.create_host_buffer::<UniformData>(1, vk::BufferUsageFlags::UNIFORM_BUFFER);
+
+            let fence_info = vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::SIGNALED);
+            let fence = unsafe { render_device.device.create_fence(&fence_info, None) }.unwrap();
+
+            RenderResources { uniform_buffer, fence }
+        };
+
+        app.world.insert_resource(FrameResources {
+            per_frame: vec![mk_resources(), mk_resources()],
+            current_frame: 0,
         });
     }
 }
@@ -134,21 +170,27 @@ fn run_render_schedule(world: &mut World) {
     world.run_schedule(RenderSchedule);
 }
 
-fn wait_for_frame_finish(device: Res<RenderDevice>, cleanup: Res<VkCleanup>, mut swapchain: Query<&mut Swapchain>) {
+fn wait_for_frame_finish(
+    device: Res<RenderDevice>,
+    cleanup: Res<VkCleanup>,
+    mut swapchain: Query<&mut Swapchain>,
+    mut render_resources: ResMut<FrameResources>,
+) {
+    // get the next image to render to
     let mut swapchain = swapchain.single_mut();
+    swapchain.aquire_next_image(&device);
+
+    render_resources.cycle();
     unsafe {
         device
             .device
-            .wait_for_fences(std::slice::from_ref(&swapchain.fence), true, u64::MAX)
+            .wait_for_fences(std::slice::from_ref(&render_resources.get().fence), true, u64::MAX)
             .unwrap();
         device
             .device
-            .reset_fences(std::slice::from_ref(&swapchain.fence))
+            .reset_fences(std::slice::from_ref(&render_resources.get().fence))
             .unwrap();
     }
-    // get the next image to render to
-    swapchain.aquire_next_image(&device);
-
     cleanup.send(VkCleanupEvent::SignalNextFrame);
 }
 
@@ -160,7 +202,7 @@ fn render(
     sphere_blas: Res<SphereBLAS>,
     gtransforms: Query<&GlobalTransform>,
     render_config: Res<RenderConfig>,
-    mut render_resources: ResMut<RenderResources>,
+    mut render_resources: ResMut<FrameResources>,
     rt_pipelines: Res<VulkanAssets<RaytracingPipeline>>,
     rast_pipelines: Res<VulkanAssets<RasterizationPipeline>>,
     sbt: Res<SBT>,
@@ -233,7 +275,7 @@ fn render(
                 );
 
                 {
-                    let mut uniform_view = device.map_buffer(&mut render_resources.uniform_buffer);
+                    let mut uniform_view = device.map_buffer(&mut render_resources.get_mut().uniform_buffer);
                     let mut rng = rand::thread_rng();
                     let (_, rotation, translation) = gtransforms.get(camera_e).unwrap().to_scale_rotation_translation();
                     let camera_view = Mat4::from_quat(rotation) * Mat4::from_translation(translation);
@@ -254,7 +296,7 @@ fn render(
                 let blas = blasses.single();
 
                 let push_constants = RaytracerRegisters {
-                    uniform_buffer_address: render_resources.uniform_buffer.address,
+                    uniform_buffer_address: render_resources.get().uniform_buffer.address,
                     vertex_buffer_address: blas.vertex_buffer.address,
                     index_buffer_address: blas.index_buffer.address,
                     sphere_buffer_address: sphere_blas.sphere_buffer.address,
@@ -262,10 +304,7 @@ fn render(
                 device.device.cmd_push_constants(
                     cmd_buffer,
                     compiled.pipeline_layout,
-                    vk::ShaderStageFlags::RAYGEN_KHR
-                        | vk::ShaderStageFlags::CLOSEST_HIT_KHR
-                        | vk::ShaderStageFlags::MISS_KHR
-                        | vk::ShaderStageFlags::INTERSECTION_KHR,
+                    vk::ShaderStageFlags::RAYGEN_KHR,
                     0,
                     bytemuck::bytes_of(&push_constants),
                 );
@@ -404,7 +443,11 @@ fn render(
             let queue = device.queue.lock().unwrap();
             device
                 .device
-                .queue_submit(queue.clone(), std::slice::from_ref(&submit_info), swapchain.fence)
+                .queue_submit(
+                    queue.clone(),
+                    std::slice::from_ref(&submit_info),
+                    render_resources.get().fence,
+                )
                 .unwrap();
         }
 

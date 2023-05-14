@@ -7,19 +7,10 @@
 
 layout(location = 0)rayPayloadInEXT HitPayload payload;
 
-layout(push_constant, std430) uniform Registers {
-  UniformData un;
-  VertexData vd;
-  IndexData id;
-  SphereData spheres;
-} regs;
-
 hitAttributeEXT vec3 spherePoint;
 
 void main() {
-  const AABB sphereAABB = regs.spheres.aabbs[0];
-  const vec3 center = aabb_center(sphereAABB);
-
+  const vec3 center = vec3(0);
   const vec3 normal = normalize(spherePoint - center);
   const vec3 world_normal = normalize((gl_ObjectToWorldEXT * vec4(normal, 0.0)).xyz);
 

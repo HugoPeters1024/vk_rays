@@ -187,12 +187,7 @@ fn create_raytracing_pipeline(
     };
 
     let push_constant_info = vk::PushConstantRange::builder()
-        .stage_flags(
-            vk::ShaderStageFlags::RAYGEN_KHR
-                | vk::ShaderStageFlags::CLOSEST_HIT_KHR
-                | vk::ShaderStageFlags::MISS_KHR
-                | vk::ShaderStageFlags::INTERSECTION_KHR,
-        )
+        .stage_flags(vk::ShaderStageFlags::RAYGEN_KHR)
         .offset(0)
         .size(std::mem::size_of::<RaytracerRegisters>() as u32)
         .build();

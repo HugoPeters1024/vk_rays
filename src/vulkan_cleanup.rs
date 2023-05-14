@@ -20,6 +20,7 @@ pub enum VkCleanupEvent {
     Image(vk::Image),
     Swapchain(vk::SwapchainKHR),
     AccelerationStructure(vk::AccelerationStructureKHR),
+    Fence(vk::Fence),
 }
 
 impl VkCleanupEvent {
@@ -64,6 +65,9 @@ impl VkCleanupEvent {
                     .exts
                     .rt_acc_struct
                     .destroy_acceleration_structure(acceleration_structure, None);
+            },
+            VkCleanupEvent::Fence(fence) => unsafe {
+                device.device.destroy_fence(fence, None);
             },
             _ => panic!("Signal events should not be here"),
         }
