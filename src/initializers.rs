@@ -31,3 +31,19 @@ pub fn layout_transition2(image: vk::Image, from: vk::ImageLayout, to: vk::Image
         })
         .build()
 }
+
+pub fn buffer_image_copy(width: u32, height: u32) -> vk::BufferImageCopy {
+    vk::BufferImageCopy::builder()
+        .image_extent(vk::Extent3D {
+            width,
+            height,
+            depth: 1,
+        })
+        .image_subresource(vk::ImageSubresourceLayers {
+            aspect_mask: vk::ImageAspectFlags::COLOR,
+            mip_level: 0,
+            base_array_layer: 0,
+            layer_count: 1,
+        })
+        .build()
+}

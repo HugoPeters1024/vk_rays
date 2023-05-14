@@ -16,9 +16,6 @@ use crate::vulkan_cleanup::{VkCleanup, VkCleanupEvent};
 #[derive(Clone, Copy, Pod, Zeroable)]
 pub struct RaytracerRegisters {
     pub uniform_buffer_address: u64,
-    pub vertex_buffer_address: u64,
-    pub index_buffer_address: u64,
-    pub sphere_buffer_address: u64,
 }
 
 #[derive(TypeUuid)]
@@ -174,6 +171,12 @@ fn create_raytracing_pipeline(
             .descriptor_type(vk::DescriptorType::ACCELERATION_STRUCTURE_KHR)
             .descriptor_count(1)
             .stage_flags(vk::ShaderStageFlags::RAYGEN_KHR)
+            .build(),
+        vk::DescriptorSetLayoutBinding::builder()
+            .binding(2)
+            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .descriptor_count(1)
+            .stage_flags(vk::ShaderStageFlags::MISS_KHR)
             .build(),
     ];
 

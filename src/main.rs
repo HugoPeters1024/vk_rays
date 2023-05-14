@@ -14,6 +14,7 @@ mod shader;
 mod shader_binding_table;
 mod sphere_blas;
 mod swapchain;
+mod texture;
 mod vk_utils;
 mod vulkan_assets;
 mod vulkan_cleanup;
@@ -71,6 +72,7 @@ fn main() {
         .add_plugin(bevy::winit::WinitPlugin::default())
         .add_plugin(bevy::scene::ScenePlugin::default())
         .add_asset::<bevy::render::mesh::Mesh>()
+        .add_asset_loader(bevy::render::texture::ExrTextureLoader)
         .add_plugin(RenderPlugin)
         .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
         .insert_resource(RapierConfiguration {
@@ -122,39 +124,26 @@ fn startup(
     // floor
     commands.spawn((
         game_assets.box_mesh.clone(),
-        TransformBundle::from_transform(Transform::from_xyz(0.0, -1.0, 0.0).with_scale(Vec3::new(100.0, 0.2, 100.0))),
+        TransformBundle::from_transform(Transform::from_xyz(0.0, -1.0, 0.0).with_scale(Vec3::new(10.0, 0.2, 10.0))),
         RigidBody::Fixed,
         Collider::cuboid(0.5, 0.5, 0.5),
     ));
 
-    let raygen_shader: Handle<Shader> = assets.load("shaders/raygen.rgen");
-    let triangle_hit_shader: Handle<Shader> = assets.load("shaders/hit.rchit");
-    let miss_shader: Handle<Shader> = assets.load("shaders/miss.rmiss");
-    let sphere_int_shader: Handle<Shader> = assets.load("shaders/sphere.rint");
-    let sphere_hit_shader: Handle<Shader> = assets.load("shaders/sphere.rchit");
-
-    let rt_pipeline = rt_pipelines.add(RaytracingPipeline {
-        raygen_shader: raygen_shader.clone(),
-        triangle_hit_shader: triangle_hit_shader.clone(),
-        miss_shader: miss_shader.clone(),
-        sphere_int_shader,
-        sphere_hit_shader,
-    });
-
-    let vs_shader: Handle<Shader> = assets.load("shaders/quad.vert");
-    let fs_shader: Handle<Shader> = assets.load("shaders/quad.frag");
-
-    let quad_pipeline = rast_pipelines.add(RasterizationPipeline {
-        vs_shader,
-        fs_shader,
-        ..default()
-    });
-
     commands.insert_resource(game_assets);
 
     commands.insert_resource(RenderConfig {
-        rt_pipeline,
-        quad_pipeline,
+        rt_pipeline: rt_pipelines.add(RaytracingPipeline {
+            raygen_shader: assets.load("shaders/raygen.rgen"),
+            triangle_hit_shader: assets.load("shaders/hit.rchit"),
+            miss_shader: assets.load("shaders/miss.rmiss"),
+            sphere_int_shader: assets.load("shaders/sphere.rint"),
+            sphere_hit_shader: assets.load("shaders/sphere.rchit"),
+        }),
+        quad_pipeline: rast_pipelines.add(RasterizationPipeline {
+            vs_shader: assets.load("shaders/quad.vert"),
+            fs_shader: assets.load("shaders/quad.frag"),
+        }),
+        skybox: assets.load("textures/sky.exr"),
     });
 }
 
@@ -209,7 +198,7 @@ fn player_controls(input: Res<Input<KeyCode>>, time: Res<Time>, mut camera: Quer
     if input.pressed(KeyCode::Up) {
         camera.rotation *= Quat::from_axis_angle(sideways, f);
     }
-    
+
     if input.pressed(KeyCode::Down) {
         camera.rotation *= Quat::from_axis_angle(sideways, -f);
     }
@@ -223,7 +212,7 @@ fn camera_clear(input: Res<Input<KeyCode>>, mut q: Query<&mut Camera3d>) {
 }
 
 fn spawn(mut commands: Commands, game_assets: Res<GameAssets>, q: Query<&MainBlock>) {
-    if q.iter().count() < 100 {
+    if q.iter().count() < 1 {
         commands.spawn((
             game_assets.box_mesh.clone(),
             TransformBundle::from_transform(

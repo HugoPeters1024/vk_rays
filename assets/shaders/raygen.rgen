@@ -47,7 +47,7 @@ void main() {
     for(uint bounce=0; bounce<8; bounce++) {
       traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xFF, 0, 0, 0, origin, tmin, direction, tmax, 0);
       accum += mask * payload.emission;
-      if (payload.t == 0) {
+      if (payload.t == 0.0) {
         break;
       }
 
@@ -60,5 +60,5 @@ void main() {
   }
 
   vec4 old_image = regs.un.entropy == 666 ? vec4(0) : imageLoad(render_target, ivec2(gl_LaunchIDEXT.xy));
-  imageStore(render_target, ivec2(gl_LaunchIDEXT.xy), old_image + vec4(accum / float(MAX_SAMPLES), 1.0));
+  imageStore(render_target, ivec2(gl_LaunchIDEXT.xy), old_image + vec4(accum/float(MAX_SAMPLES), 1.0));
 }

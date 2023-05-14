@@ -50,6 +50,7 @@ pub struct RenderDeviceImpl {
     pub single_time_command_buffer: vk::CommandBuffer,
     pub single_time_fence: vk::Fence,
     pub nearest_sampler: vk::Sampler,
+    pub linear_sampler: vk::Sampler,
     pub alloc: Option<RwLock<AllocImpl>>,
 }
 
@@ -247,7 +248,7 @@ impl RenderDeviceImpl {
             let fence_info = vk::FenceCreateInfo::builder();
 
             let single_time_fence = device.create_fence(&fence_info, None).unwrap();
-            let sampler_info = vk::SamplerCreateInfo::builder()
+            let nearest_sampler_info = vk::SamplerCreateInfo::builder()
                 .mag_filter(vk::Filter::NEAREST)
                 .min_filter(vk::Filter::NEAREST)
                 .address_mode_u(vk::SamplerAddressMode::REPEAT)
@@ -257,7 +258,19 @@ impl RenderDeviceImpl {
                 .border_color(vk::BorderColor::INT_OPAQUE_BLACK)
                 .unnormalized_coordinates(false)
                 .mipmap_mode(vk::SamplerMipmapMode::NEAREST);
-            let nearest_sampler = device.create_sampler(&sampler_info, None).unwrap();
+            let nearest_sampler = device.create_sampler(&nearest_sampler_info, None).unwrap();
+
+            let linear_sampler_info = vk::SamplerCreateInfo::builder()
+                .mag_filter(vk::Filter::NEAREST)
+                .min_filter(vk::Filter::NEAREST)
+                .address_mode_u(vk::SamplerAddressMode::REPEAT)
+                .address_mode_v(vk::SamplerAddressMode::REPEAT)
+                .address_mode_w(vk::SamplerAddressMode::REPEAT)
+                .anisotropy_enable(false)
+                .border_color(vk::BorderColor::INT_OPAQUE_BLACK)
+                .unnormalized_coordinates(false)
+                .mipmap_mode(vk::SamplerMipmapMode::LINEAR);
+            let linear_sampler = device.create_sampler(&linear_sampler_info, None).unwrap();
 
             let alloc = Some(RwLock::new(AllocImpl {
                 allocator: Allocator::new(&AllocatorCreateDesc {
@@ -296,6 +309,7 @@ impl RenderDeviceImpl {
                 single_time_command_buffer,
                 single_time_fence,
                 nearest_sampler,
+                linear_sampler,
                 alloc,
             }
         }

@@ -8,7 +8,7 @@ layout(location = 0) out vec4 oColor;
 
 void main() {
     const float gamma = 2.2f;
-    const float exposure = 1.0f;
+    const float exposure = 0.4f;
 
     vec4 bufferVal = texture(test, uv);
 

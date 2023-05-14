@@ -19,7 +19,7 @@ use bevy::{
     prelude::*,
     window::{PrimaryWindow, RawHandleWrapper},
 };
-use rand::*;
+use rand::RngCore;
 
 #[derive(ScheduleLabel, Debug, Hash, PartialEq, Eq, Clone)]
 pub struct RenderSchedule;
@@ -56,6 +56,7 @@ fn flush_ecs(world: &mut World) {}
 pub struct RenderConfig {
     pub rt_pipeline: Handle<RaytracingPipeline>,
     pub quad_pipeline: Handle<RasterizationPipeline>,
+    pub skybox: Handle<bevy::prelude::Image>,
 }
 
 #[derive(Resource)]
@@ -139,7 +140,8 @@ impl Plugin for RenderPlugin {
             .add_asset::<crate::gltf_assets::GltfMesh>()
             .add_vulkan_asset::<crate::gltf_assets::GltfMesh>()
             .init_asset_loader::<crate::gltf_assets::GltfLoader>()
-            .init_debug_asset_loader::<crate::gltf_assets::GltfLoader>();
+            .init_debug_asset_loader::<crate::gltf_assets::GltfLoader>()
+            .add_vulkan_asset::<bevy::prelude::Image>();
 
         app.add_plugin(ScenePlugin);
 
@@ -198,7 +200,7 @@ fn render(
     device: Res<RenderDevice>,
     scene: Res<Scene>,
     mut swapchain: Query<&mut Swapchain>,
-    blasses: Res<VulkanAssets<GltfMesh>>,
+    textures: Res<VulkanAssets<bevy::prelude::Image>>,
     sphere_blas: Res<SphereBLAS>,
     gtransforms: Query<&GlobalTransform>,
     render_config: Res<RenderConfig>,
@@ -223,7 +225,6 @@ fn render(
             .unwrap();
 
         let begin_info = vk::CommandBufferBeginInfo::builder().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-
         device.device.begin_command_buffer(cmd_buffer, &begin_info).unwrap();
 
         swapchain.on_begin_render(cmd_buffer);
@@ -264,9 +265,26 @@ fn render(
                     .build();
                 write_acceleration_structure.descriptor_count = 1;
 
+                let skybox_image_binding = vk::DescriptorImageInfo::builder()
+                    .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                    .image_view(
+                        textures
+                            .get(&render_config.skybox)
+                            .map_or(vk::ImageView::null(), |x| x.view),
+                    )
+                    .sampler(device.linear_sampler)
+                    .build();
+
+                let write_skybox = vk::WriteDescriptorSet::builder()
+                    .dst_set(compiled.descriptor_set)
+                    .dst_binding(2)
+                    .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                    .image_info(std::slice::from_ref(&skybox_image_binding))
+                    .build();
+
                 device
                     .device
-                    .update_descriptor_sets(&[write_render_target, write_acceleration_structure], &[]);
+                    .update_descriptor_sets(&[write_render_target, write_acceleration_structure, write_skybox], &[]);
 
                 device.device.cmd_bind_pipeline(
                     cmd_buffer,
@@ -293,13 +311,8 @@ fn render(
                     };
                 }
 
-                let blas = blasses.single();
-
                 let push_constants = RaytracerRegisters {
                     uniform_buffer_address: render_resources.get().uniform_buffer.address,
-                    vertex_buffer_address: blas.vertex_buffer.address,
-                    index_buffer_address: blas.index_buffer.address,
-                    sphere_buffer_address: sphere_blas.sphere_buffer.address,
                 };
                 device.device.cmd_push_constants(
                     cmd_buffer,

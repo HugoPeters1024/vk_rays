@@ -33,9 +33,9 @@ void main()
   g_seed = wang_hash((gl_InstanceID+2));
   payload.color = SampleRandomColor();
   payload.emission = vec3(0);
-  if (gl_InstanceID % 23 == 4) {
-    payload.emission = vec3(37.0);
-  }
+  //if (gl_InstanceID % 23 == 4) {
+  //  payload.emission = vec3(37.0);
+  //}
   payload.roughness = 1.0f;
 }
 
