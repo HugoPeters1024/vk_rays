@@ -19,7 +19,7 @@ void main() {
   payload.t = gl_HitTEXT;
   payload.normal = world_normal;
   payload.emission = vec3(0.0);
-  payload.roughness = 0.001f;
-  payload.transmission = 1.0f;
+  payload.roughness = 0.002f;
+  payload.transmission = 1.00f;
   payload.refract_index = 1.33f;
 }

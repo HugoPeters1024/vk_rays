@@ -8,6 +8,7 @@ use gpu_allocator::{
     MemoryLocation,
 };
 
+
 impl VulkanAsset for bevy::prelude::Image {
     type ExtractedAsset = bevy::prelude::Image;
     type PreparedAsset = VkImage;

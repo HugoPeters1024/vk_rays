@@ -100,23 +100,24 @@ impl VulkanAsset for RaytracingPipeline {
                 .collect()
         };
 
+        let layouts = [descriptor_set_layout, descriptor_set_layout];
         let descriptor_set_alloc_info = vk::DescriptorSetAllocateInfo::builder()
             .descriptor_pool(device.descriptor_pool)
-            .set_layouts(std::slice::from_ref(&descriptor_set_layout))
+            .set_layouts(&layouts)
             .build();
 
-        let descriptor_set = unsafe {
+        let descriptor_sets = unsafe {
             device
                 .device
                 .allocate_descriptor_sets(&descriptor_set_alloc_info)
                 .unwrap()
-        }[0];
+        };
 
         VkRaytracingPipeline {
             vk_pipeline,
             pipeline_layout,
             descriptor_set_layout,
-            descriptor_set,
+            descriptor_sets,
             raygen_handle: handles[0],
             miss_handle: handles[1],
             triangle_hit_handle: handles[2],
@@ -135,7 +136,7 @@ pub struct VkRaytracingPipeline {
     pub vk_pipeline: vk::Pipeline,
     pub pipeline_layout: vk::PipelineLayout,
     pub descriptor_set_layout: vk::DescriptorSetLayout,
-    pub descriptor_set: vk::DescriptorSet,
+    pub descriptor_sets: Vec<vk::DescriptorSet>,
     pub raygen_handle: RTGroupHandle,
     pub miss_handle: RTGroupHandle,
     pub triangle_hit_handle: RTGroupHandle,

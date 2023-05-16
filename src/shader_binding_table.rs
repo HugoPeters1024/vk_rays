@@ -39,6 +39,7 @@ pub struct SBTRegionHitTriangle {
     pub handle: RTGroupHandle,
     pub vertex_buffer: u64,
     pub index_buffer: u64,
+    pub geometry_to_index_offset_buffer: u64,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -84,11 +85,11 @@ fn update_sbt(
     pipeline: Res<VulkanAssets<RaytracingPipeline>>,
     triangle_meshes: Res<VulkanAssets<GltfMesh>>,
 ) {
-    println!("Updating SBT");
     let Some(pipeline) = pipeline.get_single() else {
         println!("Bailing, No pipeline");
         return;
     };
+    println!("Updating SBT");
     let rtprops = vk_utils::get_raytracing_properties(&device);
 
     let raygen_region_data = SBTRegionRaygen {
@@ -109,6 +110,7 @@ fn update_sbt(
             handle: pipeline.triangle_hit_handle,
             vertex_buffer: mesh.vertex_buffer.address,
             index_buffer: mesh.index_buffer.address,
+            geometry_to_index_offset_buffer: mesh.geometry_to_index_offset.address,
         }));
         me.triangle_offsets.insert(handle.clone(), hit_region_data.len() as u32 - 1);
     }

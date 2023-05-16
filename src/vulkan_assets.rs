@@ -166,16 +166,8 @@ fn prepare_asset<T: VulkanAsset>(
         std::any::type_name::<T::PreparedAsset>()
     );
     while let Ok((handle_id, extracted_asset)) = recv_extracted.recv() {
-        println!(
-            "{} asset received, preparing...",
-            std::any::type_name::<T::PreparedAsset>()
-        );
         let prepared_asset = T::prepare_asset(&device, extracted_asset);
         send_prepared.send((handle_id, prepared_asset)).unwrap();
-        println!(
-            "{} asset prepared, sending to main thread",
-            std::any::type_name::<T::PreparedAsset>()
-        );
     }
     println!(
         "Prepare asset thread for {} finished",

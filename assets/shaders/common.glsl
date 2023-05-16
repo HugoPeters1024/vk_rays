@@ -73,20 +73,24 @@ struct Vertex {
 };
 
 
-layout (buffer_reference, scalar, buffer_reference_align = 8) buffer VertexData {
+layout (buffer_reference, scalar, buffer_reference_align = 8) readonly buffer VertexData {
   Vertex vertices[];
 };
 
-layout (buffer_reference, scalar, buffer_reference_align = 8) buffer IndexData {
+layout (buffer_reference, scalar, buffer_reference_align = 8) readonly buffer IndexData {
   uint indices[];
 };
 
-layout(buffer_reference, scalar, buffer_reference_align = 8) buffer SphereData
+layout (buffer_reference, scalar, buffer_reference_align = 8) readonly buffer IndexOffsetData {
+  uint offsets[];
+};
+
+layout(buffer_reference, scalar, buffer_reference_align = 8) readonly buffer SphereData
 {
 	AABB aabbs[];
 };
 
-layout (buffer_reference, std430, buffer_reference_align = 8) buffer UniformData {
+layout (buffer_reference, scalar, buffer_reference_align = 8) readonly buffer UniformData {
   mat4 inverse_view;
   mat4 inverse_proj;
   uint entropy;

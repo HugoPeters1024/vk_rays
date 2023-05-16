@@ -46,7 +46,7 @@ pub struct RenderDeviceImpl {
     pub command_pool: vk::CommandPool,
     pub asset_command_pool: Mutex<vk::CommandPool>,
     pub descriptor_pool: vk::DescriptorPool,
-    pub cmd_buffer: vk::CommandBuffer,
+    cmd_buffer: vk::CommandBuffer,
     pub single_time_command_buffer: vk::CommandBuffer,
     pub single_time_fence: vk::Fence,
     pub nearest_sampler: vk::Sampler,

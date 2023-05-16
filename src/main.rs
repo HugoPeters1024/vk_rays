@@ -44,6 +44,7 @@ struct Cli {
 #[derive(Resource)]
 struct GameAssets {
     box_mesh: Handle<GltfMesh>,
+    rungholt: Handle<GltfMesh>,
 }
 
 #[derive(Component)]
@@ -94,22 +95,22 @@ fn startup(
     mut rt_pipelines: ResMut<Assets<RaytracingPipeline>>,
     mut rast_pipelines: ResMut<Assets<RasterizationPipeline>>,
 ) {
-    commands.spawn((
-        Sphere,
-        TransformBundle::from_transform(
-            Transform::from_translation(Vec3::new(0.0, 0.0, 0.0)).with_scale(Vec3::splat(2.0)),
-        ),
-        RigidBody::Fixed,
-        Collider::ball(0.5),
-    ));
-    commands.spawn((
-        Sphere,
-        TransformBundle::from_transform(
-            Transform::from_translation(Vec3::new(4.5, 0.5, 0.2)).with_scale(Vec3::splat(3.0)),
-        ),
-        RigidBody::Fixed,
-        Collider::ball(0.5),
-    ));
+    //commands.spawn((
+    //    Sphere,
+    //    TransformBundle::from_transform(
+    //        Transform::from_translation(Vec3::new(0.0, 0.0, 0.0)).with_scale(Vec3::splat(2.0)),
+    //    ),
+    //    RigidBody::Fixed,
+    //    Collider::ball(0.5),
+    //));
+    //commands.spawn((
+    //    Sphere,
+    //    TransformBundle::from_transform(
+    //        Transform::from_translation(Vec3::new(4.5, 0.5, 0.2)).with_scale(Vec3::splat(3.0)),
+    //    ),
+    //    RigidBody::Fixed,
+    //    Collider::ball(0.5),
+    //));
     commands.spawn(Camera3dBundle {
         transform: Transform::from_xyz(0.0, 0.0, -3.0),
         ..default()
@@ -117,14 +118,22 @@ fn startup(
 
     let game_assets = GameAssets {
         box_mesh: assets.load("models/box.glb"),
+        rungholt: assets.load("models/rungholt.glb"),
     };
 
     // floor
+    //commands.spawn((
+    //    game_assets.box_mesh.clone(),
+    //    TransformBundle::from_transform(Transform::from_xyz(0.0, -1.0, 0.0).with_scale(Vec3::new(100.0, 0.2, 100.0))),
+    //    RigidBody::Fixed,
+    //    Collider::cuboid(0.5, 0.5, 0.5),
+    //));
+    //
     commands.spawn((
-        game_assets.box_mesh.clone(),
-        TransformBundle::from_transform(Transform::from_xyz(0.0, -1.0, 0.0).with_scale(Vec3::new(50.0, 0.2, 50.0))),
-        RigidBody::Fixed,
-        Collider::cuboid(0.5, 0.5, 0.5),
+        game_assets.rungholt.clone(),
+        TransformBundle::from_transform(
+            Transform::from_scale(Vec3::splat(0.1)).with_rotation(Quat::from_rotation_x(PI / 2.0)),
+        ),
     ));
 
     commands.insert_resource(game_assets);
@@ -162,30 +171,31 @@ fn player_controls(input: Res<Input<KeyCode>>, time: Res<Time>, mut camera: Quer
     // construct a vec3 that indicates the direction the player is looking
     let look_dir = camera.rotation.inverse() * Vec3::new(0.0, 0.0, 1.0);
 
+    let speed = if input.pressed(KeyCode::LShift) { 4.0 } else { 1.0 };
     let sideways = Vec3::cross(look_dir, Vec3::Y);
 
     if input.pressed(KeyCode::W) {
-        camera.translation += look_dir * f;
+        camera.translation += look_dir * f * speed;
     }
 
     if input.pressed(KeyCode::S) {
-        camera.translation -= look_dir * f;
+        camera.translation -= look_dir * f * speed;
     }
 
     if input.pressed(KeyCode::A) {
-        camera.translation -= sideways * f;
+        camera.translation -= sideways * f * speed;
     }
 
     if input.pressed(KeyCode::D) {
-        camera.translation += sideways * f;
+        camera.translation += sideways * f * speed;
     }
 
     if input.pressed(KeyCode::Q) {
-        camera.translation -= Vec3::Y * f;
+        camera.translation -= Vec3::Y * f * speed;
     }
 
     if input.pressed(KeyCode::E) {
-        camera.translation += Vec3::Y * f;
+        camera.translation += Vec3::Y * f * speed;
     }
 
     if input.pressed(KeyCode::Left) {
@@ -213,7 +223,7 @@ fn camera_clear(input: Res<Input<KeyCode>>, mut q: Query<&mut Camera3d>) {
 }
 
 fn spawn(mut commands: Commands, game_assets: Res<GameAssets>, q: Query<&MainBlock>) {
-    if q.iter().count() < 300 {
+    if q.iter().count() < 0 {
         commands.spawn((
             game_assets.box_mesh.clone(),
             TransformBundle::from_transform(

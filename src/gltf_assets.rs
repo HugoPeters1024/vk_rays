@@ -5,7 +5,7 @@ use bevy::{
 };
 
 use crate::{
-    acceleration_structure::{allocate_acceleration_structure, Vertex, TriangleBLAS},
+    acceleration_structure::{allocate_acceleration_structure, TriangleBLAS, Vertex},
     render_buffer::{Buffer, BufferProvider},
     render_device::RenderDevice,
     vulkan_assets::VulkanAsset,
@@ -107,11 +107,23 @@ impl VulkanAsset for GltfMesh {
         let mut vertex_buffer_view = device.map_buffer(&mut vertex_buffer_host);
         let mut index_buffer_view = device.map_buffer(&mut index_buffer_host);
 
+        let mut geometry_to_index_offset_host: Buffer<u32> = device.create_host_buffer(
+            mesh.primitives().len() as u64,
+            vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::TRANSFER_SRC,
+        );
+
         let geometries_descrs = extract_mesh_data(
             &asset,
             vertex_buffer_view.as_slice_mut(),
             index_buffer_view.as_slice_mut(),
         );
+
+        assert!(geometries_descrs.len() == geometry_to_index_offset_host.nr_elements as usize);
+
+        let mut geometry_to_index_offset_view = device.map_buffer(&mut geometry_to_index_offset_host);
+        for (i,g) in geometries_descrs.iter().enumerate() {
+            geometry_to_index_offset_view[i] = g.first_index as u32;
+        }
 
         drop(index_buffer_view);
         drop(vertex_buffer_view);
@@ -138,13 +150,21 @@ impl VulkanAsset for GltfMesh {
                 | vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR,
         );
 
+        let geometry_to_index_offset_device: Buffer<u32> = device.create_device_buffer(
+            mesh.primitives().len() as u64,
+            vk::BufferUsageFlags::STORAGE_BUFFER
+                | vk::BufferUsageFlags::TRANSFER_DST
+        );
+
         device.run_asset_commands(|cmd_buffer| {
             device.upload_buffer(cmd_buffer, &mut vertex_buffer_host, &vertex_buffer_device);
             device.upload_buffer(cmd_buffer, &mut index_buffer_host, &index_buffer_device);
+            device.upload_buffer(cmd_buffer, &mut geometry_to_index_offset_host, &geometry_to_index_offset_device);
         });
 
         device.destroy_buffer(vertex_buffer_host);
         device.destroy_buffer(index_buffer_host);
+        device.destroy_buffer(geometry_to_index_offset_host);
 
         let geometry_infos = geometries_descrs
             .iter()
@@ -189,8 +209,6 @@ impl VulkanAsset for GltfMesh {
             )
         };
 
-        let num_triangles = primitive_counts.iter().sum::<u32>();
-
         let mut acceleration_structure =
             allocate_acceleration_structure(&device, vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL, &geometry_sizes);
 
@@ -208,22 +226,25 @@ impl VulkanAsset for GltfMesh {
             })
             .build();
 
-        let build_range_info = vk::AccelerationStructureBuildRangeInfoKHR::builder()
-            .primitive_count(num_triangles)
-            // offset in bytes where the primitive data is defined
-            .primitive_offset(0)
-            .first_vertex(0)
-            .transform_offset(0)
-            .build();
+        let build_ranges: Vec<vk::AccelerationStructureBuildRangeInfoKHR> =
+            geometries_descrs.iter().map(|geometry| {
+                vk::AccelerationStructureBuildRangeInfoKHR::builder()
+                    .primitive_count((geometry.index_count / 3) as u32)
+                    // offset in bytes where the primitive data is defined
+                    .primitive_offset(geometry.first_index as u32 * std::mem::size_of::<u32>() as u32)
+                    .first_vertex(0)
+                    .transform_offset(0)
+                    .build()
+            }).collect();
 
-        let build_range_infos = std::slice::from_ref(&build_range_info);
+        let singleton_build_ranges = &[build_ranges.as_slice()];
 
         unsafe {
             device.run_asset_commands(&|cmd_buffer| {
                 device.exts.rt_acc_struct.cmd_build_acceleration_structures(
                     cmd_buffer,
                     std::slice::from_ref(&build_geometry_info),
-                    std::slice::from_ref(&build_range_infos),
+                    singleton_build_ranges,
                 );
             })
         }
@@ -241,7 +262,8 @@ impl VulkanAsset for GltfMesh {
         let blas = TriangleBLAS {
             vertex_buffer: vertex_buffer_device,
             index_buffer: index_buffer_device,
-            acceleration_structure,
+            geometry_to_index_offset: geometry_to_index_offset_device,
+            acceleration_structure
         };
 
         blas
@@ -250,6 +272,7 @@ impl VulkanAsset for GltfMesh {
     fn destroy_asset(asset: Self::PreparedAsset, cleanup: &VkCleanup) {
         cleanup.send(VkCleanupEvent::Buffer(asset.vertex_buffer.handle));
         cleanup.send(VkCleanupEvent::Buffer(asset.index_buffer.handle));
+        cleanup.send(VkCleanupEvent::Buffer(asset.geometry_to_index_offset.handle));
         cleanup.send(VkCleanupEvent::AccelerationStructure(
             asset.acceleration_structure.handle,
         ));
@@ -316,7 +339,7 @@ fn extract_mesh_data(gltf: &GltfMesh, vertex_buffer: &mut [Vertex], index_buffer
         assert!(geometry.index_count % 3 == 0);
 
         for (i, index) in index_reader.enumerate() {
-            index_buffer[geometry.first_index + i] = index;
+            index_buffer[geometry.first_index + i] = index + vertex_buffer_head as u32;
         }
 
         vertex_buffer_head += geometry.vertex_count;

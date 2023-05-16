@@ -15,6 +15,7 @@ pub struct Vertex {
 pub struct TriangleBLAS {
     pub vertex_buffer: Buffer<Vertex>,
     pub index_buffer: Buffer<u32>,
+    pub geometry_to_index_offset: Buffer<u32>,
     pub acceleration_structure: AccelerationStructure,
 }
 

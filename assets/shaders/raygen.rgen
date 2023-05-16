@@ -11,15 +11,13 @@ layout(set=0, binding=0, rgba32f) uniform image2D                  render_target
 layout(set=0, binding=1)          uniform accelerationStructureEXT topLevelAS;
 
 layout(push_constant, std430) uniform Registers {
-  UniformData un;
-  VertexData  vd;
-  IndexData   id;
-} regs;
+  UniformData uniforms;
+};
 
 layout(location = 0) rayPayloadEXT HitPayload payload;
 
 uint getSeed() {
-    return wang_hash(wang_hash(gl_LaunchIDEXT.x + gl_LaunchSizeEXT.x * gl_LaunchIDEXT.y) + regs.un.entropy);
+    return wang_hash(gl_LaunchIDEXT.x + gl_LaunchSizeEXT.x * gl_LaunchIDEXT.y + uniforms.entropy);
 }
 
 void main() {
@@ -28,23 +26,23 @@ void main() {
   const vec2 inUV = pixel_center / vec2(gl_LaunchSizeEXT.xy);
   vec2 d = inUV * 2.0 - 1.0;
 
-  vec3 start_origin = (regs.un.inverse_view * vec4(0,0,0,1)).xyz;
-  vec3 target = (regs.un.inverse_proj * vec4(d.x, d.y, 1, 1)).xyz;
-  vec3 start_direction = (regs.un.inverse_view * vec4(normalize(target), 0)).xyz;
+  vec3 start_origin = (uniforms.inverse_view * vec4(0,0,0,1)).xyz;
+  vec3 target = (uniforms.inverse_proj * vec4(d.x, d.y, 1, 1)).xyz;
+  vec3 start_direction = (uniforms.inverse_view * vec4(normalize(target), 0)).xyz;
 
 
   float tmin = 0.0001;
   float tmax = 100.0;
 
   vec3 accum = vec3(0.0);
-  const uint MAX_SAMPLES = 16;
+  const uint MAX_SAMPLES = 1;
 
   for(uint s = 0; s<MAX_SAMPLES; s++) {
     vec3 mask = vec3(1.0);
     vec3 origin = start_origin;
     vec3 direction = start_direction;
 
-    for(uint bounce=0; bounce<8; bounce++) {
+    for(uint bounce=0; bounce<16; bounce++) {
       traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xFF, 0, 0, 0, origin, tmin, direction, tmax, 0);
       accum += mask * payload.emission;
       if (payload.t == 0.0) {
@@ -99,6 +97,6 @@ void main() {
     }
   }
 
-  vec4 old_image = regs.un.should_clear != 0 ? vec4(0) : imageLoad(render_target, ivec2(gl_LaunchIDEXT.xy));
+  vec4 old_image = uniforms.should_clear != 0 ? vec4(0) : imageLoad(render_target, ivec2(gl_LaunchIDEXT.xy));
   imageStore(render_target, ivec2(gl_LaunchIDEXT.xy), old_image + vec4(accum/float(MAX_SAMPLES), 1.0));
 }

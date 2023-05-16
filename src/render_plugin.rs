@@ -76,11 +76,16 @@ impl FrameResources {
     fn cycle(&mut self) {
         self.current_frame = (self.current_frame + 1) % self.per_frame.len();
     }
+
+    fn current_idx(&self) -> usize {
+        self.current_frame
+    }
 }
 
 pub struct RenderResources {
     pub uniform_buffer: Buffer<UniformData>,
     pub fence: vk::Fence,
+    pub cmd_buffer: vk::CommandBuffer,
 }
 
 fn cleanup_render_resources(render_resources: Res<FrameResources>, cleanup: Res<VkCleanup>) {
@@ -158,7 +163,18 @@ impl Plugin for RenderPlugin {
             let fence_info = vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::SIGNALED);
             let fence = unsafe { render_device.device.create_fence(&fence_info, None) }.unwrap();
 
-            RenderResources { uniform_buffer, fence }
+            let alloc_info = vk::CommandBufferAllocateInfo::builder()
+                .command_pool(render_device.command_pool)
+                .level(vk::CommandBufferLevel::PRIMARY)
+                .command_buffer_count(1);
+
+            let cmd_buffer = unsafe { render_device.device.allocate_command_buffers(&alloc_info) }.unwrap()[0];
+
+            RenderResources {
+                uniform_buffer,
+                fence,
+                cmd_buffer,
+            }
         };
 
         app.world.insert_resource(FrameResources {
@@ -217,7 +233,7 @@ fn render(
     unsafe {
         let (swapchain_image, swapchain_view) = swapchain.current_framebuffer();
 
-        let cmd_buffer = device.cmd_buffer;
+        let cmd_buffer = render_resources.get().cmd_buffer;
         device
             .device
             .reset_command_buffer(cmd_buffer, vk::CommandBufferResetFlags::empty())
@@ -238,110 +254,115 @@ fn render(
         );
 
         if let Some(compiled) = rt_pipelines.get(&render_config.rt_pipeline) {
-            if scene.is_ready() {
-                // update the descriptor set
-                let render_target_image_binding = vk::DescriptorImageInfo::builder()
-                    .image_layout(vk::ImageLayout::GENERAL)
-                    .image_view(swapchain.render_target.view)
-                    .build();
+            if let Some(skybox) = textures.get(&render_config.skybox) {
+                if scene.is_ready() {
+                    let ray_descriptor_set = compiled.descriptor_sets[render_resources.current_idx()];
+                    let mut writes = Vec::new();
+                    // update the descriptor set
+                    let render_target_image_binding = vk::DescriptorImageInfo::builder()
+                        .image_layout(vk::ImageLayout::GENERAL)
+                        .image_view(swapchain.render_target.view)
+                        .build();
 
-                let write_render_target = vk::WriteDescriptorSet::builder()
-                    .dst_set(compiled.descriptor_set)
-                    .dst_binding(0)
-                    .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
-                    .image_info(std::slice::from_ref(&render_target_image_binding))
-                    .build();
-
-                let mut p_acceleration_structure_write = vk::WriteDescriptorSetAccelerationStructureKHR::builder()
-                    .acceleration_structures(std::slice::from_ref(&scene.tlas.handle))
-                    .build();
-
-                let mut write_acceleration_structure = vk::WriteDescriptorSet::builder()
-                    .dst_set(compiled.descriptor_set)
-                    .dst_binding(1)
-                    .descriptor_type(vk::DescriptorType::ACCELERATION_STRUCTURE_KHR)
-                    .push_next(&mut p_acceleration_structure_write)
-                    .build();
-                write_acceleration_structure.descriptor_count = 1;
-
-                let skybox_image_binding = vk::DescriptorImageInfo::builder()
-                    .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                    .image_view(
-                        textures
-                            .get(&render_config.skybox)
-                            .map_or(vk::ImageView::null(), |x| x.view),
-                    )
-                    .sampler(device.linear_sampler)
-                    .build();
-
-                let write_skybox = vk::WriteDescriptorSet::builder()
-                    .dst_set(compiled.descriptor_set)
-                    .dst_binding(2)
-                    .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                    .image_info(std::slice::from_ref(&skybox_image_binding))
-                    .build();
-
-                device
-                    .device
-                    .update_descriptor_sets(&[write_render_target, write_acceleration_structure, write_skybox], &[]);
-
-                device.device.cmd_bind_pipeline(
-                    cmd_buffer,
-                    vk::PipelineBindPoint::RAY_TRACING_KHR,
-                    compiled.vk_pipeline,
-                );
-
-                {
-                    let mut uniform_view = device.map_buffer(&mut render_resources.get_mut().uniform_buffer);
-                    let mut rng = rand::thread_rng();
-                    let (_, rotation, translation) = gtransforms.get(camera_e).unwrap().to_scale_rotation_translation();
-                    let camera_view = Mat4::from_quat(rotation) * Mat4::from_translation(translation);
-                    let projection = Mat4::perspective_rh(
-                        camera.fov,
-                        swapchain.width as f32 / swapchain.height as f32,
-                        camera.min_t,
-                        camera.max_t,
+                    writes.push(
+                        vk::WriteDescriptorSet::builder()
+                            .dst_set(ray_descriptor_set)
+                            .dst_binding(0)
+                            .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
+                            .image_info(std::slice::from_ref(&render_target_image_binding))
+                            .build(),
                     );
-                    let entropy = rng.next_u32();
-                    uniform_view[0] = UniformData {
-                        inverse_view: camera_view.inverse(),
-                        inverse_proj: projection.inverse(),
-                        entropy,
-                        should_clear: camera.clear as u32,
-                    };
-                }
 
-                let push_constants = RaytracerRegisters {
-                    uniform_buffer_address: render_resources.get().uniform_buffer.address,
-                };
-                device.device.cmd_push_constants(
-                    cmd_buffer,
-                    compiled.pipeline_layout,
-                    vk::ShaderStageFlags::RAYGEN_KHR,
-                    0,
-                    bytemuck::bytes_of(&push_constants),
-                );
+                    let mut p_acceleration_structure_write = vk::WriteDescriptorSetAccelerationStructureKHR::builder()
+                        .acceleration_structures(std::slice::from_ref(&scene.tlas.handle))
+                        .build();
 
-                device.device.cmd_bind_descriptor_sets(
-                    cmd_buffer,
-                    vk::PipelineBindPoint::RAY_TRACING_KHR,
-                    compiled.pipeline_layout,
-                    0,
-                    std::slice::from_ref(&compiled.descriptor_set),
-                    &[],
-                );
+                    let mut write_acceleration_structure = vk::WriteDescriptorSet::builder()
+                        .dst_set(ray_descriptor_set)
+                        .dst_binding(1)
+                        .descriptor_type(vk::DescriptorType::ACCELERATION_STRUCTURE_KHR)
+                        .push_next(&mut p_acceleration_structure_write)
+                        .build();
+                    write_acceleration_structure.descriptor_count = 1;
 
-                if sbt.data.address != 0 {
-                    device.exts.rt_pipeline.cmd_trace_rays(
+                    writes.push(write_acceleration_structure);
+
+                    let skybox_image_binding = vk::DescriptorImageInfo::builder()
+                        .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                        .image_view(skybox.view)
+                        .sampler(device.linear_sampler)
+                        .build();
+
+                    writes.push(
+                        vk::WriteDescriptorSet::builder()
+                            .dst_set(ray_descriptor_set)
+                            .dst_binding(2)
+                            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                            .image_info(std::slice::from_ref(&skybox_image_binding))
+                            .build(),
+                    );
+
+                    device.device.update_descriptor_sets(&writes, &[]);
+
+                    device.device.cmd_bind_pipeline(
                         cmd_buffer,
-                        &sbt.raygen_region,
-                        &sbt.miss_region,
-                        &sbt.hit_region,
-                        &vk::StridedDeviceAddressRegionKHR::default(),
-                        swapchain.width,
-                        swapchain.height,
-                        1,
-                    )
+                        vk::PipelineBindPoint::RAY_TRACING_KHR,
+                        compiled.vk_pipeline,
+                    );
+
+                    {
+                        let mut uniform_view = device.map_buffer(&mut render_resources.get_mut().uniform_buffer);
+                        let mut rng = rand::thread_rng();
+                        let (_, rotation, translation) =
+                            gtransforms.get(camera_e).unwrap().to_scale_rotation_translation();
+                        let camera_view = Mat4::from_quat(rotation) * Mat4::from_translation(translation);
+                        let projection = Mat4::perspective_rh(
+                            camera.fov,
+                            swapchain.width as f32 / swapchain.height as f32,
+                            camera.min_t,
+                            camera.max_t,
+                        );
+                        let entropy = rng.next_u32();
+                        uniform_view[0] = UniformData {
+                            inverse_view: camera_view.inverse(),
+                            inverse_proj: projection.inverse(),
+                            entropy,
+                            should_clear: camera.clear as u32,
+                        };
+                    }
+
+                    let push_constants = RaytracerRegisters {
+                        uniform_buffer_address: render_resources.get().uniform_buffer.address,
+                    };
+                    device.device.cmd_push_constants(
+                        cmd_buffer,
+                        compiled.pipeline_layout,
+                        vk::ShaderStageFlags::RAYGEN_KHR,
+                        0,
+                        bytemuck::bytes_of(&push_constants),
+                    );
+
+                    device.device.cmd_bind_descriptor_sets(
+                        cmd_buffer,
+                        vk::PipelineBindPoint::RAY_TRACING_KHR,
+                        compiled.pipeline_layout,
+                        0,
+                        std::slice::from_ref(&ray_descriptor_set),
+                        &[],
+                    );
+
+                    if sbt.data.address != 0 {
+                        device.exts.rt_pipeline.cmd_trace_rays(
+                            cmd_buffer,
+                            &sbt.raygen_region,
+                            &sbt.miss_region,
+                            &sbt.hit_region,
+                            &vk::StridedDeviceAddressRegionKHR::default(),
+                            swapchain.width,
+                            swapchain.height,
+                            1,
+                        )
+                    }
                 }
             }
 
@@ -355,6 +376,7 @@ fn render(
             );
 
             if let Some(compiled) = rast_pipelines.get(&render_config.quad_pipeline) {
+                let rast_descriptor_set = compiled.descriptor_sets[render_resources.current_idx()];
                 // update the descriptor set
                 let render_target_image_binding = vk::DescriptorImageInfo::builder()
                     .image_layout(vk::ImageLayout::GENERAL)
@@ -363,7 +385,7 @@ fn render(
                     .build();
 
                 let descriptor_write = vk::WriteDescriptorSet::builder()
-                    .dst_set(compiled.descriptor_set)
+                    .dst_set(rast_descriptor_set)
                     .dst_binding(0)
                     .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
                     .image_info(std::slice::from_ref(&render_target_image_binding))
@@ -424,7 +446,7 @@ fn render(
                     vk::PipelineBindPoint::GRAPHICS,
                     compiled.pipeline_layout,
                     0,
-                    std::slice::from_ref(&compiled.descriptor_set),
+                    std::slice::from_ref(&rast_descriptor_set),
                     &[],
                 );
 

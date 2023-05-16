@@ -55,7 +55,7 @@ pub struct VkRasterizationPipeline {
     pub vk_pipeline: vk::Pipeline,
     pub pipeline_layout: vk::PipelineLayout,
     pub descriptor_set_layout: vk::DescriptorSetLayout,
-    pub descriptor_set: vk::DescriptorSet,
+    pub descriptor_sets: Vec<vk::DescriptorSet>,
 }
 
 pub struct RasterizationPipelinePlugin;
@@ -104,7 +104,7 @@ fn create_rast_pipeline(device: &RenderDevice, vs: &Shader, fs: &Shader) -> VkRa
     let color_blending =
         vk::PipelineColorBlendStateCreateInfo::builder().attachments(std::slice::from_ref(&color_blend_attachment));
 
-    let (descriptor_set_layout, descriptor_set) = create_rast_descriptor_data(device);
+    let (descriptor_set_layout, descriptor_sets) = create_rast_descriptor_data(device);
 
     let layout_info = vk::PipelineLayoutCreateInfo::builder().set_layouts(std::slice::from_ref(&descriptor_set_layout));
     let pipeline_layout = unsafe { device.device.create_pipeline_layout(&layout_info, None) }.unwrap();
@@ -136,11 +136,11 @@ fn create_rast_pipeline(device: &RenderDevice, vs: &Shader, fs: &Shader) -> VkRa
         vk_pipeline: pipeline,
         pipeline_layout,
         descriptor_set_layout,
-        descriptor_set,
+        descriptor_sets,
     }
 }
 
-fn create_rast_descriptor_data(device: &RenderDevice) -> (vk::DescriptorSetLayout, vk::DescriptorSet) {
+fn create_rast_descriptor_data(device: &RenderDevice) -> (vk::DescriptorSetLayout, Vec<vk::DescriptorSet>) {
     let sampler_layout_binding = vk::DescriptorSetLayoutBinding::builder()
         .binding(0)
         .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
@@ -153,16 +153,17 @@ fn create_rast_descriptor_data(device: &RenderDevice) -> (vk::DescriptorSetLayou
 
     let layout = unsafe { device.device.create_descriptor_set_layout(&layout_info, None).unwrap() };
 
-    let set = unsafe {
+    let layouts = [layout, layout];
+    let sets = unsafe {
         device
             .device
             .allocate_descriptor_sets(
                 &vk::DescriptorSetAllocateInfo::builder()
                     .descriptor_pool(device.descriptor_pool)
-                    .set_layouts(std::slice::from_ref(&layout)),
+                    .set_layouts(&layouts),
             )
-            .unwrap()[0]
+            .unwrap()
     };
 
-    (layout, set)
+    (layout, sets)
 }
