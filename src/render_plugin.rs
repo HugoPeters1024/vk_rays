@@ -198,7 +198,8 @@ fn wait_for_frame_finish(
     let mut swapchain = swapchain.single_mut();
     swapchain.aquire_next_image(&device);
 
-    render_resources.cycle();
+    // TODO use two scene tlasses
+    // render_resources.cycle();
     unsafe {
         device
             .device

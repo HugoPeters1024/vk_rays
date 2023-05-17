@@ -17,7 +17,11 @@ layout(push_constant, std430) uniform Registers {
 layout(location = 0) rayPayloadEXT HitPayload payload;
 
 uint getSeed() {
-    return wang_hash(gl_LaunchIDEXT.x + gl_LaunchSizeEXT.x * gl_LaunchIDEXT.y + uniforms.entropy);
+    uint r = wang_hash(gl_LaunchIDEXT.x + gl_LaunchSizeEXT.x * gl_LaunchIDEXT.y);
+    if (uniforms.should_clear == 0) {
+      r += uniforms.entropy;
+    }
+    return r;
 }
 
 void main() {
@@ -48,6 +52,14 @@ void main() {
       if (payload.t == 0.0) {
         break;
       }
+
+
+      // russian roullete
+      const float pRussian = clamp(max3(payload.color), 0.0, 1.0);
+      if (randf(seed) > pRussian) {
+        break;
+      }
+      mask /= pRussian;
 
       mask *= payload.color;
 

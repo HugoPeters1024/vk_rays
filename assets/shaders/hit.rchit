@@ -35,5 +35,9 @@ void main()
   payload.emission = vec3(0);
   payload.roughness = 1.0f;
   payload.transmission = 0.0f;
+  payload.refract_index = 1.05;
+
+  uint seed = wang_hash(gl_GeometryIndexEXT+1);
+  payload.color = mix(SampleRandomColor(seed), vec3(1), 0.5);
 }
 
