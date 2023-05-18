@@ -17,15 +17,34 @@ layout(shaderRecordEXT, std430) buffer ShaderRecord
 	VertexData v;
   IndexData  i;
   IndexOffsetData o;
-  GeometryToTextureIdx gt;
+  MaterialData m;
 };
+
+vec3 calc_tangent(in Vertex v0, in Vertex v1, in Vertex v2) {
+  vec3 edge1 = v1.pos - v0.pos;
+  vec3 edge2 = v2.pos - v0.pos;
+  vec2 deltaUV1 = v1.uv - v0.uv;
+  vec2 deltaUV2 = v2.uv - v0.uv;
+
+  float denom = deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y;
+  if (abs(denom) < 0.0001f) {
+    vec3(1.0, 0.0, 0.0);
+  }
+
+  vec3 tangent;
+  float f = 1.0 / denom;
+  tangent.x = f * (deltaUV2.y * edge1.x - deltaUV1.y * edge2.x);
+  tangent.y = f * (deltaUV2.y * edge1.y - deltaUV1.y * edge2.y);
+  tangent.z = f * (deltaUV2.y * edge1.z - deltaUV1.y * edge2.z);
+  return normalize(tangent);
+}
 
 void main()
 {
   const vec3 barycentricCoords = vec3(1.0f - attribs.x - attribs.y, attribs.x, attribs.y);
 
   const uint index_offset = o.offsets[gl_GeometryIndexEXT];
-  const uint texture_idx = gt.texture_ids[gl_GeometryIndexEXT];
+  const Material material = m.materials[gl_GeometryIndexEXT];
 
   const Vertex v0 = v.vertices[i.indices[index_offset + gl_PrimitiveID * 3 + 0]];
   const Vertex v1 = v.vertices[i.indices[index_offset + gl_PrimitiveID * 3 + 1]];
@@ -34,14 +53,36 @@ void main()
   const vec3 normal = v0.normal * barycentricCoords.x + v1.normal * barycentricCoords.y + v2.normal * barycentricCoords.z;
   const vec2 uv = v0.uv * barycentricCoords.x + v1.uv * barycentricCoords.y + v2.uv * barycentricCoords.z;
 
-  vec3 world_normal = normalize((gl_ObjectToWorldEXT * vec4(normal, 0.0)).xyz);
 
-  payload.normal = world_normal;
   payload.t = gl_HitTEXT;
-  payload.color = pow(texture(textures[texture_idx], uv).xyz, vec3(2.2));
+  if (material.diffuse_texture != 0xFFFFFFFF) {
+    payload.color = pow(texture(textures[material.diffuse_texture], uv).xyz, vec3(2.2));
+  } else {
+    payload.color = vec3(0.6);
+  }
+
+  if (material.normal_texture != 0xFFFFFFFF) {
+    const vec3 tangent = calc_tangent(v0, v1, v2);
+    const vec3 bitangent = normalize(cross(normal, tangent));
+    mat3 TBN = mat3(tangent, bitangent, normal);
+
+    // normalize due to linear filtering
+    const vec3 tex_normal = normalize(texture(textures[material.normal_texture], uv).xyz * 2.0 - 1.0);
+    payload.normal = normalize(TBN * tex_normal);
+  } else {
+    payload.normal = normal;
+  }
+
+  payload.surface_normal = normalize((gl_ObjectToWorldEXT * vec4(normal, 0.0)).xyz);
+  payload.normal = normalize((gl_ObjectToWorldEXT * vec4(payload.normal, 0.0)).xyz);
+
   payload.emission = vec3(0);
   payload.roughness = 1.0f;
   payload.transmission = 0.0f;
   payload.refract_index = 1.05;
+
+  if (gl_GeometryIndexEXT == 7) {
+    payload.emission = vec3(3.0);
+  }
 }
 

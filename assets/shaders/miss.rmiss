@@ -14,6 +14,6 @@ void main()
       acos(gl_WorldRayDirectionEXT.y) / PI
   );
   payload.t = 0.0;
-  payload.emission = pow(min(texture(skybox, uv).rgb, vec3(100000)), vec3(1.8));
+  payload.emission = pow(min(texture(skybox, uv).rgb, vec3(100000)), vec3(2.2));
 }
 

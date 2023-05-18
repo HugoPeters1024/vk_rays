@@ -126,6 +126,8 @@ pub fn load_texture_from_bytes(device: &RenderDevice, format: vk::Format, bytes:
         );
     });
 
+    device.destroy_buffer(staging_buffer);
+
     let view_info = crate::initializers::image_view_info(image_handle.clone(), format);
     let view = unsafe { device.device.create_image_view(&view_info, None).unwrap() };
 

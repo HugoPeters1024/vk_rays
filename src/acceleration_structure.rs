@@ -6,18 +6,25 @@ use crate::{
 };
 
 #[repr(C)]
-#[repr(align(8))]
 pub struct Vertex {
     pub pos: [f32; 3],
     pub normal: [f32; 3],
     pub uv: [f32; 2],
 }
 
+#[repr(C)]
+#[repr(align(8))]
+pub struct TriangleMaterial {
+    pub diffuse_factor: [f32;4],
+    pub diffuse_texture: u32,
+    pub normal_texture: u32,
+}
+
 pub struct TriangleBLAS {
     pub vertex_buffer: Buffer<Vertex>,
     pub index_buffer: Buffer<u32>,
     pub geometry_to_index_offset: Buffer<u32>,
-    pub geometry_to_texture: Buffer<u32>,
+    pub geometry_to_material: Buffer<TriangleMaterial>,
     pub textures: Vec<VkImage>,
     pub acceleration_structure: AccelerationStructure,
 }

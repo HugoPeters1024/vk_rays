@@ -6,7 +6,7 @@ use bevy::{
 };
 
 use crate::{
-    acceleration_structure::{allocate_acceleration_structure, TriangleBLAS, Vertex},
+    acceleration_structure::{allocate_acceleration_structure, TriangleBLAS, TriangleMaterial, Vertex},
     render_buffer::{Buffer, BufferProvider},
     render_device::RenderDevice,
     render_image::VkImage,
@@ -267,59 +267,55 @@ impl VulkanAsset for GltfMesh {
             )
         };
 
-        let mut geometry_to_texture_host =
-            device.create_host_buffer::<u32>(geometries_descrs.len() as u64, vk::BufferUsageFlags::TRANSFER_SRC);
-        let mut geometry_to_texture_host_view = device.map_buffer(&mut geometry_to_texture_host);
+        let mut geometry_to_material_host = device
+            .create_host_buffer::<TriangleMaterial>(geometries_descrs.len() as u64, vk::BufferUsageFlags::TRANSFER_SRC);
+        let mut geometry_to_material_host_view = device.map_buffer(&mut geometry_to_material_host);
         let mut loaded_textures: HashMap<usize, VkImage> = HashMap::new();
 
-        for (geometry_id, primitive) in mesh.primitives().enumerate() {
-            let material = primitive.material().pbr_metallic_roughness();
-            let Some(tex) = material.base_color_texture() else {
-                continue;
-            };
-
-            let image_index = tex.texture().source().index();
-            if let Some(loaded_texture) = loaded_textures.get(&image_index) {
-                geometry_to_texture_host_view[geometry_id] = device.get_texture_descriptor_index(loaded_texture.view);
-                continue;
+        let mut load_cached_texture = |image_idx:usize| {
+            if let Some(res) = loaded_textures.get(&image_idx) {
+                return device.get_texture_descriptor_index(res.view);
             }
 
-            let image = &asset.images[tex.texture().source().index()];
-            let (bytes, format) = match image.format {
-                gltf::image::Format::R8G8B8A8 => (image.pixels.clone(), vk::Format::R8G8B8A8_UNORM),
-                gltf::image::Format::R8G8B8 => (padd_pixel_bytes_rgba_unorm(&image.pixels, 3, image.width as usize, image.height as usize), vk::Format::R8G8B8A8_UNORM),
-                _ => panic!("Unsupported texture format"),
+            let Some(image) = load_gltf_texture(&device, &asset, image_idx) else {
+                return 0xFFFFFFFF;
             };
 
+            loaded_textures.insert(image_idx, image);
+            return device.get_texture_descriptor_index(loaded_textures.get(&image_idx).unwrap().view);
+        };
 
-            let loaded_texture = load_texture_from_bytes(
-                device,
-                format,
-                &bytes,
-                image.width,
-                image.height,
-            );
+        for (geometry_id, primitive) in mesh.primitives().enumerate() {
+            geometry_to_material_host_view[geometry_id] = TriangleMaterial {
+                diffuse_factor: [1.0; 4],
+                diffuse_texture: 0xFFFFFFFF,
+                normal_texture: 0xFFFFFFFF,
+            };
 
-            loaded_textures.insert(image_index, loaded_texture);
-            geometry_to_texture_host_view[geometry_id] =
-                device.get_texture_descriptor_index(loaded_textures.get(&image_index).unwrap().view);
+            if let Some(diffuse_texture) = primitive.material().pbr_metallic_roughness().base_color_texture() {
+                geometry_to_material_host_view[geometry_id].diffuse_texture = load_cached_texture(diffuse_texture.texture().source().index());
+            }
+
+            if let Some(normal_texture) = primitive.material().normal_texture() {
+                geometry_to_material_host_view[geometry_id].normal_texture = load_cached_texture(normal_texture.texture().source().index());
+            }
         }
 
-        let geometry_to_texture_device = device.create_device_buffer::<u32>(
-            geometry_to_texture_host.nr_elements,
+        let geometry_to_material_device = device.create_device_buffer::<TriangleMaterial>(
+            geometry_to_material_host.nr_elements,
             vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::STORAGE_BUFFER,
         );
 
         device.run_asset_commands(|cmd_buffer| {
-            device.upload_buffer(cmd_buffer, &geometry_to_texture_host, &geometry_to_texture_device);
+            device.upload_buffer(cmd_buffer, &geometry_to_material_host, &geometry_to_material_device);
         });
-        device.destroy_buffer(geometry_to_texture_host);
+        device.destroy_buffer(geometry_to_material_host);
 
         let blas = TriangleBLAS {
             vertex_buffer: vertex_buffer_device,
             index_buffer: index_buffer_device,
             geometry_to_index_offset: geometry_to_index_offset_device,
-            geometry_to_texture: geometry_to_texture_device,
+            geometry_to_material: geometry_to_material_device,
             acceleration_structure,
             textures: loaded_textures.drain().map(|(_, v)| v).collect(),
         };
@@ -335,7 +331,7 @@ impl VulkanAsset for GltfMesh {
         cleanup.send(VkCleanupEvent::Buffer(asset.vertex_buffer.handle));
         cleanup.send(VkCleanupEvent::Buffer(asset.index_buffer.handle));
         cleanup.send(VkCleanupEvent::Buffer(asset.geometry_to_index_offset.handle));
-        cleanup.send(VkCleanupEvent::Buffer(asset.geometry_to_texture.handle));
+        cleanup.send(VkCleanupEvent::Buffer(asset.geometry_to_material.handle));
         cleanup.send(VkCleanupEvent::AccelerationStructure(
             asset.acceleration_structure.handle,
         ));
@@ -404,7 +400,6 @@ fn extract_mesh_data(gltf: &GltfMesh, vertex_buffer: &mut [Vertex], index_buffer
             }
         }
 
-
         let index_reader = reader.read_indices().unwrap().into_u32();
         assert!(index_reader.len() == geometry.index_count);
         assert!(geometry.index_count % 3 == 0);
@@ -419,4 +414,21 @@ fn extract_mesh_data(gltf: &GltfMesh, vertex_buffer: &mut [Vertex], index_buffer
     }
 
     geometries
+}
+
+fn load_gltf_texture(device: &RenderDevice, asset: &GltfMesh, image_idx: usize) -> Option<VkImage> {
+    let image = &asset.images[image_idx];
+    let (bytes, format) = match image.format {
+        gltf::image::Format::R8G8B8A8 => (image.pixels.clone(), vk::Format::R8G8B8A8_UNORM),
+        gltf::image::Format::R8G8B8 => (
+            padd_pixel_bytes_rgba_unorm(&image.pixels, 3, image.width as usize, image.height as usize),
+            vk::Format::R8G8B8A8_UNORM,
+        ),
+        _ => {
+            println!("WARNING: Unsupported texture format {:?}, ignoring...", image.format);
+            return None;
+        }
+    };
+
+    Some(load_texture_from_bytes(device, format, &bytes, image.width, image.height))
 }

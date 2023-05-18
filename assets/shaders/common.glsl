@@ -41,6 +41,7 @@ vec3 alignToNormalZUP(in vec3 s, in vec3 normal)
 struct HitPayload {
   float t;
   vec3 color;
+  vec3 surface_normal;
   vec3 normal;
   vec3 emission;
   float roughness;
@@ -73,6 +74,12 @@ struct Vertex {
   vec2 uv;
 };
 
+struct Material {
+  vec4 diffuse_factor;
+  uint diffuse_texture;
+  uint normal_texture;
+};
+
 
 layout (buffer_reference, scalar, buffer_reference_align = 8) readonly buffer VertexData {
   Vertex vertices[];
@@ -86,8 +93,8 @@ layout (buffer_reference, scalar, buffer_reference_align = 8) readonly buffer In
   uint offsets[];
 };
 
-layout (buffer_reference, scalar, buffer_reference_align = 8) readonly buffer GeometryToTextureIdx {
-  uint texture_ids[];
+layout (buffer_reference, scalar, buffer_reference_align = 8) readonly buffer MaterialData {
+  Material materials[];
 };
 
 layout(buffer_reference, scalar, buffer_reference_align = 8) readonly buffer SphereData

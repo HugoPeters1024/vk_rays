@@ -44,7 +44,7 @@ struct Cli {
 #[derive(Resource)]
 struct GameAssets {
     box_mesh: Handle<GltfMesh>,
-    rungholt: Handle<GltfMesh>,
+    sponza: Handle<GltfMesh>,
 }
 
 #[derive(Component)]
@@ -118,7 +118,7 @@ fn startup(
 
     let game_assets = GameAssets {
         box_mesh: assets.load("models/box.glb"),
-        rungholt: assets.load("models/rungholt.glb"),
+        sponza: assets.load("models/sponza.glb"),
     };
 
     // floor
@@ -130,9 +130,9 @@ fn startup(
     //));
     //
     commands.spawn((
-        game_assets.rungholt.clone(),
+        game_assets.sponza.clone(),
         TransformBundle::from_transform(
-            Transform::from_scale(Vec3::splat(0.1)).with_rotation(Quat::from_rotation_x(PI / 2.0)),
+            Transform::from_scale(Vec3::splat(0.01)).with_rotation(Quat::from_rotation_x(0.0)),
         ),
     ));
 
@@ -172,7 +172,7 @@ fn player_controls(input: Res<Input<KeyCode>>, time: Res<Time>, mut camera: Quer
     let look_dir = camera.rotation.inverse() * Vec3::new(0.0, 0.0, 1.0);
 
     let speed = if input.pressed(KeyCode::LShift) { 4.0 } else { 1.0 };
-    let sideways = Vec3::cross(look_dir, Vec3::Y);
+    let sideways = Vec3::normalize(Vec3::cross(look_dir, Vec3::Y));
 
     if input.pressed(KeyCode::W) {
         camera.translation += look_dir * f * speed;

@@ -311,8 +311,8 @@ impl RenderDeviceImpl {
             let nearest_sampler = device.create_sampler(&nearest_sampler_info, None).unwrap();
 
             let linear_sampler_info = vk::SamplerCreateInfo::builder()
-                .mag_filter(vk::Filter::NEAREST)
-                .min_filter(vk::Filter::NEAREST)
+                .mag_filter(vk::Filter::LINEAR)
+                .min_filter(vk::Filter::LINEAR)
                 .address_mode_u(vk::SamplerAddressMode::REPEAT)
                 .address_mode_v(vk::SamplerAddressMode::REPEAT)
                 .address_mode_w(vk::SamplerAddressMode::REPEAT)
@@ -499,8 +499,6 @@ impl RenderDeviceImpl {
             self.device
                 .update_descriptor_sets(std::slice::from_ref(&descriptor_write), &[]);
         }
-
-        println!("AAAAA view {} now as global texture at index {}", view.as_raw(), index);
 
         index
     }
