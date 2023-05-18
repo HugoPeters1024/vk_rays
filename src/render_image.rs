@@ -38,11 +38,11 @@ impl VulkanAsset for Image {
     type ExtractedAsset = Image;
     type PreparedAsset = VkImage;
 
-    type Param = ();
+    type ExtractParam = ();
 
     fn extract_asset(
         &self,
-        _param: &mut bevy::ecs::system::SystemParamItem<Self::Param>,
+        _param: &mut bevy::ecs::system::SystemParamItem<Self::ExtractParam>,
     ) -> Option<Self::ExtractedAsset> {
         Some(self.clone())
     }

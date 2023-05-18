@@ -70,6 +70,7 @@ float aabb_radius(in AABB aabb) {
 struct Vertex {
   vec3 pos;
   vec3 normal;
+  vec2 uv;
 };
 
 
@@ -83,6 +84,10 @@ layout (buffer_reference, scalar, buffer_reference_align = 8) readonly buffer In
 
 layout (buffer_reference, scalar, buffer_reference_align = 8) readonly buffer IndexOffsetData {
   uint offsets[];
+};
+
+layout (buffer_reference, scalar, buffer_reference_align = 8) readonly buffer GeometryToTextureIdx {
+  uint texture_ids[];
 };
 
 layout(buffer_reference, scalar, buffer_reference_align = 8) readonly buffer SphereData

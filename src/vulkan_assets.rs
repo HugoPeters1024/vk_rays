@@ -12,9 +12,9 @@ use crate::vulkan_cleanup::VkCleanup;
 pub trait VulkanAsset: Asset {
     type ExtractedAsset: Send + Sync + 'static;
     type PreparedAsset: Send + Sync + 'static;
-    type Param: SystemParam;
+    type ExtractParam: SystemParam;
 
-    fn extract_asset(&self, param: &mut SystemParamItem<Self::Param>) -> Option<Self::ExtractedAsset>;
+    fn extract_asset(&self, param: &mut SystemParamItem<Self::ExtractParam>) -> Option<Self::ExtractedAsset>;
     fn prepare_asset(device: &RenderDevice, asset: Self::ExtractedAsset) -> Self::PreparedAsset;
 
     fn destroy_asset(asset: Self::PreparedAsset, cleanup: &VkCleanup);
@@ -107,7 +107,7 @@ fn extract_vulkan_asset<T: VulkanAsset>(
     mut asset_events: EventReader<AssetEvent<T>>,
     assets: Res<Assets<T>>,
     vk_assets: Res<VulkanAssets<T>>,
-    param: StaticSystemParam<T::Param>,
+    param: StaticSystemParam<T::ExtractParam>,
 ) {
     let mut param = param.into_inner();
     for event in asset_events.iter() {
@@ -157,7 +157,7 @@ fn publish_vulkan_asset<T: VulkanAsset>(mut vk_assets: ResMut<VulkanAssets<T>>, 
 
 // run on the dedicated thread
 fn prepare_asset<T: VulkanAsset>(
-    device: RenderDevice,
+    mut device: RenderDevice,
     recv_extracted: Receiver<(HandleId, T::ExtractedAsset)>,
     send_prepared: Sender<(HandleId, T::PreparedAsset)>,
 ) {
@@ -166,7 +166,7 @@ fn prepare_asset<T: VulkanAsset>(
         std::any::type_name::<T::PreparedAsset>()
     );
     while let Ok((handle_id, extracted_asset)) = recv_extracted.recv() {
-        let prepared_asset = T::prepare_asset(&device, extracted_asset);
+        let prepared_asset = T::prepare_asset(&mut device, extracted_asset);
         send_prepared.send((handle_id, prepared_asset)).unwrap();
     }
     println!(

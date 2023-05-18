@@ -2,7 +2,7 @@ use ash::vk;
 
 use crate::{
     render_buffer::{Buffer, BufferProvider},
-    render_device::RenderDevice,
+    render_device::RenderDevice, render_image::VkImage,
 };
 
 #[repr(C)]
@@ -10,12 +10,15 @@ use crate::{
 pub struct Vertex {
     pub pos: [f32; 3],
     pub normal: [f32; 3],
+    pub uv: [f32; 2],
 }
 
 pub struct TriangleBLAS {
     pub vertex_buffer: Buffer<Vertex>,
     pub index_buffer: Buffer<u32>,
     pub geometry_to_index_offset: Buffer<u32>,
+    pub geometry_to_texture: Buffer<u32>,
+    pub textures: Vec<VkImage>,
     pub acceleration_structure: AccelerationStructure,
 }
 

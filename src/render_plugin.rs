@@ -348,7 +348,7 @@ fn render(
                         vk::PipelineBindPoint::RAY_TRACING_KHR,
                         compiled.pipeline_layout,
                         0,
-                        std::slice::from_ref(&ray_descriptor_set),
+                        &[ray_descriptor_set, device.g_descriptor_set],
                         &[],
                     );
 

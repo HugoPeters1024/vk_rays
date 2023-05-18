@@ -40,6 +40,7 @@ pub struct SBTRegionHitTriangle {
     pub vertex_buffer: u64,
     pub index_buffer: u64,
     pub geometry_to_index_offset_buffer: u64,
+    pub goemetry_to_texture_buffer: u64,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -111,6 +112,7 @@ fn update_sbt(
             vertex_buffer: mesh.vertex_buffer.address,
             index_buffer: mesh.index_buffer.address,
             geometry_to_index_offset_buffer: mesh.geometry_to_index_offset.address,
+            goemetry_to_texture_buffer: mesh.geometry_to_texture.address,
         }));
         me.triangle_offsets.insert(handle.clone(), hit_region_data.len() as u32 - 1);
     }

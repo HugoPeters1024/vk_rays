@@ -2,12 +2,15 @@ use ash::vk;
 use bevy::{
     asset::{AssetLoader, LoadedAsset},
     reflect::TypeUuid,
+    utils::{HashMap, HashSet},
 };
 
 use crate::{
     acceleration_structure::{allocate_acceleration_structure, TriangleBLAS, Vertex},
     render_buffer::{Buffer, BufferProvider},
     render_device::RenderDevice,
+    render_image::VkImage,
+    texture::{load_texture_from_bytes, padd_pixel_bytes_rgba_unorm},
     vulkan_assets::VulkanAsset,
     vulkan_cleanup::{VkCleanup, VkCleanupEvent},
 };
@@ -82,11 +85,11 @@ struct GeometryDescr {
 impl VulkanAsset for GltfMesh {
     type ExtractedAsset = GltfMesh;
     type PreparedAsset = TriangleBLAS;
-    type Param = ();
+    type ExtractParam = ();
 
     fn extract_asset(
         &self,
-        _param: &mut bevy::ecs::system::SystemParamItem<Self::Param>,
+        _param: &mut bevy::ecs::system::SystemParamItem<Self::ExtractParam>,
     ) -> Option<Self::ExtractedAsset> {
         Some(self.clone())
     }
@@ -121,7 +124,7 @@ impl VulkanAsset for GltfMesh {
         assert!(geometries_descrs.len() == geometry_to_index_offset_host.nr_elements as usize);
 
         let mut geometry_to_index_offset_view = device.map_buffer(&mut geometry_to_index_offset_host);
-        for (i,g) in geometries_descrs.iter().enumerate() {
+        for (i, g) in geometries_descrs.iter().enumerate() {
             geometry_to_index_offset_view[i] = g.first_index as u32;
         }
 
@@ -152,14 +155,17 @@ impl VulkanAsset for GltfMesh {
 
         let geometry_to_index_offset_device: Buffer<u32> = device.create_device_buffer(
             mesh.primitives().len() as u64,
-            vk::BufferUsageFlags::STORAGE_BUFFER
-                | vk::BufferUsageFlags::TRANSFER_DST
+            vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
         );
 
         device.run_asset_commands(|cmd_buffer| {
             device.upload_buffer(cmd_buffer, &mut vertex_buffer_host, &vertex_buffer_device);
             device.upload_buffer(cmd_buffer, &mut index_buffer_host, &index_buffer_device);
-            device.upload_buffer(cmd_buffer, &mut geometry_to_index_offset_host, &geometry_to_index_offset_device);
+            device.upload_buffer(
+                cmd_buffer,
+                &mut geometry_to_index_offset_host,
+                &geometry_to_index_offset_device,
+            );
         });
 
         device.destroy_buffer(vertex_buffer_host);
@@ -226,8 +232,9 @@ impl VulkanAsset for GltfMesh {
             })
             .build();
 
-        let build_ranges: Vec<vk::AccelerationStructureBuildRangeInfoKHR> =
-            geometries_descrs.iter().map(|geometry| {
+        let build_ranges: Vec<vk::AccelerationStructureBuildRangeInfoKHR> = geometries_descrs
+            .iter()
+            .map(|geometry| {
                 vk::AccelerationStructureBuildRangeInfoKHR::builder()
                     .primitive_count((geometry.index_count / 3) as u32)
                     // offset in bytes where the primitive data is defined
@@ -235,7 +242,8 @@ impl VulkanAsset for GltfMesh {
                     .first_vertex(0)
                     .transform_offset(0)
                     .build()
-            }).collect();
+            })
+            .collect();
 
         let singleton_build_ranges = &[build_ranges.as_slice()];
 
@@ -259,20 +267,75 @@ impl VulkanAsset for GltfMesh {
             )
         };
 
+        let mut geometry_to_texture_host =
+            device.create_host_buffer::<u32>(geometries_descrs.len() as u64, vk::BufferUsageFlags::TRANSFER_SRC);
+        let mut geometry_to_texture_host_view = device.map_buffer(&mut geometry_to_texture_host);
+        let mut loaded_textures: HashMap<usize, VkImage> = HashMap::new();
+
+        for (geometry_id, primitive) in mesh.primitives().enumerate() {
+            let material = primitive.material().pbr_metallic_roughness();
+            let Some(tex) = material.base_color_texture() else {
+                continue;
+            };
+
+            let image_index = tex.texture().source().index();
+            if let Some(loaded_texture) = loaded_textures.get(&image_index) {
+                geometry_to_texture_host_view[geometry_id] = device.get_texture_descriptor_index(loaded_texture.view);
+                continue;
+            }
+
+            let image = &asset.images[tex.texture().source().index()];
+            let (bytes, format) = match image.format {
+                gltf::image::Format::R8G8B8A8 => (image.pixels.clone(), vk::Format::R8G8B8A8_UNORM),
+                gltf::image::Format::R8G8B8 => (padd_pixel_bytes_rgba_unorm(&image.pixels, 3, image.width as usize, image.height as usize), vk::Format::R8G8B8A8_UNORM),
+                _ => panic!("Unsupported texture format"),
+            };
+
+
+            let loaded_texture = load_texture_from_bytes(
+                device,
+                format,
+                &bytes,
+                image.width,
+                image.height,
+            );
+
+            loaded_textures.insert(image_index, loaded_texture);
+            geometry_to_texture_host_view[geometry_id] =
+                device.get_texture_descriptor_index(loaded_textures.get(&image_index).unwrap().view);
+        }
+
+        let geometry_to_texture_device = device.create_device_buffer::<u32>(
+            geometry_to_texture_host.nr_elements,
+            vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::STORAGE_BUFFER,
+        );
+
+        device.run_asset_commands(|cmd_buffer| {
+            device.upload_buffer(cmd_buffer, &geometry_to_texture_host, &geometry_to_texture_device);
+        });
+        device.destroy_buffer(geometry_to_texture_host);
+
         let blas = TriangleBLAS {
             vertex_buffer: vertex_buffer_device,
             index_buffer: index_buffer_device,
             geometry_to_index_offset: geometry_to_index_offset_device,
-            acceleration_structure
+            geometry_to_texture: geometry_to_texture_device,
+            acceleration_structure,
+            textures: loaded_textures.drain().map(|(_, v)| v).collect(),
         };
 
         blas
     }
 
     fn destroy_asset(asset: Self::PreparedAsset, cleanup: &VkCleanup) {
+        for texture in asset.textures {
+            cleanup.send(VkCleanupEvent::ImageView(texture.view));
+            cleanup.send(VkCleanupEvent::Image(texture.handle));
+        }
         cleanup.send(VkCleanupEvent::Buffer(asset.vertex_buffer.handle));
         cleanup.send(VkCleanupEvent::Buffer(asset.index_buffer.handle));
         cleanup.send(VkCleanupEvent::Buffer(asset.geometry_to_index_offset.handle));
+        cleanup.send(VkCleanupEvent::Buffer(asset.geometry_to_texture.handle));
         cleanup.send(VkCleanupEvent::AccelerationStructure(
             asset.acceleration_structure.handle,
         ));
@@ -333,6 +396,14 @@ fn extract_mesh_data(gltf: &GltfMesh, vertex_buffer: &mut [Vertex], index_buffer
             vertex_buffer[geometry.first_vertex + i].normal[1] = normal[1];
             vertex_buffer[geometry.first_vertex + i].normal[2] = normal[2];
         }
+
+        if let Some(uv_reader) = reader.read_tex_coords(0).map(|r| r.into_f32()) {
+            for (i, uv) in uv_reader.enumerate() {
+                vertex_buffer[geometry.first_vertex + i].uv[0] = uv[0];
+                vertex_buffer[geometry.first_vertex + i].uv[1] = uv[1];
+            }
+        }
+
 
         let index_reader = reader.read_indices().unwrap().into_u32();
         assert!(index_reader.len() == geometry.index_count);

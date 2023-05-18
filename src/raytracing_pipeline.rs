@@ -44,11 +44,11 @@ impl ComposedAsset for RaytracingPipeline {
 impl VulkanAsset for RaytracingPipeline {
     type ExtractedAsset = (Shader, Shader, Shader, Shader, Shader);
     type PreparedAsset = VkRaytracingPipeline;
-    type Param = SRes<Assets<Shader>>;
+    type ExtractParam = SRes<Assets<Shader>>;
 
     fn extract_asset(
         &self,
-        shaders: &mut bevy::ecs::system::SystemParamItem<Self::Param>,
+        shaders: &mut bevy::ecs::system::SystemParamItem<Self::ExtractParam>,
     ) -> Option<Self::ExtractedAsset> {
         let raygen_shader = shaders.get(&self.raygen_shader)?;
         let miss_shader = shaders.get(&self.miss_shader)?;
@@ -190,13 +190,15 @@ fn create_raytracing_pipeline(
             .unwrap()
     };
 
+    let all_descriptor_set_layouts = [descriptor_set_layout, device.g_descriptor_set_layout];
     let push_constant_info = vk::PushConstantRange::builder()
         .stage_flags(vk::ShaderStageFlags::RAYGEN_KHR)
         .offset(0)
         .size(std::mem::size_of::<RaytracerRegisters>() as u32)
         .build();
+
     let pipeline_layout_info = vk::PipelineLayoutCreateInfo::builder()
-        .set_layouts(std::slice::from_ref(&descriptor_set_layout))
+        .set_layouts(&all_descriptor_set_layouts)
         .push_constant_ranges(std::slice::from_ref(&push_constant_info));
 
     let pipeline_layout = unsafe {

@@ -27,11 +27,11 @@ impl ComposedAsset for RasterizationPipeline {
 impl VulkanAsset for RasterizationPipeline {
     type ExtractedAsset = (Shader, Shader);
     type PreparedAsset = VkRasterizationPipeline;
-    type Param = SRes<Assets<Shader>>;
+    type ExtractParam = SRes<Assets<Shader>>;
 
     fn extract_asset(
         &self,
-        shaders: &mut bevy::ecs::system::SystemParamItem<Self::Param>,
+        shaders: &mut bevy::ecs::system::SystemParamItem<Self::ExtractParam>,
     ) -> Option<Self::ExtractedAsset> {
         let vs_shader = shaders.get(&self.vs_shader)?;
         let fs_shader = shaders.get(&self.fs_shader)?;
