@@ -95,14 +95,14 @@ fn startup(
     mut rt_pipelines: ResMut<Assets<RaytracingPipeline>>,
     mut rast_pipelines: ResMut<Assets<RasterizationPipeline>>,
 ) {
-    //commands.spawn((
-    //    Sphere,
-    //    TransformBundle::from_transform(
-    //        Transform::from_translation(Vec3::new(0.0, 0.0, 0.0)).with_scale(Vec3::splat(2.0)),
-    //    ),
-    //    RigidBody::Fixed,
-    //    Collider::ball(0.5),
-    //));
+    commands.spawn((
+        Sphere,
+        TransformBundle::from_transform(
+            Transform::from_translation(Vec3::new(0.0, 1.0, 0.0)).with_scale(Vec3::splat(2.0)),
+        ),
+        RigidBody::Fixed,
+        Collider::ball(0.5),
+    ));
     //commands.spawn((
     //    Sphere,
     //    TransformBundle::from_transform(

@@ -13,11 +13,11 @@ pub struct Vertex {
 }
 
 #[repr(C)]
-#[repr(align(8))]
 pub struct TriangleMaterial {
     pub diffuse_factor: [f32;4],
     pub diffuse_texture: u32,
     pub normal_texture: u32,
+    pub metallic_roughness_texture: u32,
 }
 
 pub struct TriangleBLAS {

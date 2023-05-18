@@ -20,7 +20,7 @@ void main() {
   payload.surface_normal = world_normal;
   payload.normal = world_normal;
   payload.emission = vec3(0.0);
-  payload.roughness = 0.002f;
+  payload.roughness = 0.00f;
   payload.transmission = 1.00f;
   payload.refract_index = 1.33f;
 }

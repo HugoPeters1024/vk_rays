@@ -82,7 +82,13 @@ void main()
   payload.refract_index = 1.05;
 
   if (gl_GeometryIndexEXT == 7) {
-    payload.emission = vec3(3.0);
+//    payload.emission = vec3(3.0);
+  }
+
+  if (material.metallic_roughness_texture != 0xFFFFFFFF) {
+    vec2 roughness_and_metallic = texture(textures[material.metallic_roughness_texture], uv).gb;
+    payload.roughness = roughness_and_metallic.x;
+    payload.metallic = roughness_and_metallic.y;
   }
 }
 

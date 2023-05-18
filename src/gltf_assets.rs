@@ -290,6 +290,7 @@ impl VulkanAsset for GltfMesh {
                 diffuse_factor: [1.0; 4],
                 diffuse_texture: 0xFFFFFFFF,
                 normal_texture: 0xFFFFFFFF,
+                metallic_roughness_texture: 0xFFFFFFFF,
             };
 
             if let Some(diffuse_texture) = primitive.material().pbr_metallic_roughness().base_color_texture() {
@@ -298,6 +299,10 @@ impl VulkanAsset for GltfMesh {
 
             if let Some(normal_texture) = primitive.material().normal_texture() {
                 geometry_to_material_host_view[geometry_id].normal_texture = load_cached_texture(normal_texture.texture().source().index());
+            }
+
+            if let Some(metallic_rougness_texture) = primitive.material().pbr_metallic_roughness().metallic_roughness_texture() {
+                geometry_to_material_host_view[geometry_id].metallic_roughness_texture = load_cached_texture(metallic_rougness_texture.texture().source().index());
             }
         }
 

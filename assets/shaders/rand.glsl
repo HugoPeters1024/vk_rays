@@ -19,6 +19,13 @@ uint wang_hash(in uint seed)
     return seed;
 }
 
+// https://www.shadertoy.com/view/cll3R4
+uint other_hash(in uint seed)
+{
+  seed = seed*0x343fd+0x269ec3;
+  return (seed>>16)&32767;
+}
+
 uint rand(inout uint seed) {
     seed = rand_xorshift(seed);
     return seed;

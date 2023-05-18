@@ -44,6 +44,7 @@ struct HitPayload {
   vec3 surface_normal;
   vec3 normal;
   vec3 emission;
+  float metallic;
   float roughness;
   float transmission;
   float refract_index;
@@ -78,6 +79,7 @@ struct Material {
   vec4 diffuse_factor;
   uint diffuse_texture;
   uint normal_texture;
+  uint metallic_roughness_texture;
 };
 
 
