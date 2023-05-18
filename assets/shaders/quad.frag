@@ -17,7 +17,7 @@ vec3 ACES(const vec3 x) {
 
 void main() {
     const float gamma = 2.2f;
-    const float exposure = 0.7;
+    const float exposure = 1.0;
 
     vec4 bufferVal = texture(test, uv);
 
