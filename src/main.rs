@@ -22,6 +22,7 @@ mod vulkan_cleanup;
 use std::f32::consts::PI;
 use std::time::Duration;
 
+use bevy::asset::HandleId;
 use bevy::prelude::*;
 use bevy::time::common_conditions::on_timer;
 use bevy_rapier3d::prelude::*;
@@ -80,6 +81,7 @@ fn main() {
         })
         .add_startup_system(startup)
         .add_system(camera_clear)
+        .add_system(move_sphere)
         .add_system(report_fps)
         .add_system(player_controls)
         .add_system(spawn.run_if(on_timer(Duration::from_secs_f32(0.02))))
@@ -95,22 +97,17 @@ fn startup(
     mut rt_pipelines: ResMut<Assets<RaytracingPipeline>>,
     mut rast_pipelines: ResMut<Assets<RasterizationPipeline>>,
 ) {
-    commands.spawn((
-        Sphere,
-        TransformBundle::from_transform(
-            Transform::from_translation(Vec3::new(0.0, 1.0, 0.0)).with_scale(Vec3::splat(2.0)),
-        ),
-        RigidBody::Fixed,
-        Collider::ball(0.5),
-    ));
-    //commands.spawn((
-    //    Sphere,
-    //    TransformBundle::from_transform(
-    //        Transform::from_translation(Vec3::new(4.5, 0.5, 0.2)).with_scale(Vec3::splat(3.0)),
-    //    ),
-    //    RigidBody::Fixed,
-    //    Collider::ball(0.5),
-    //));
+    //for i in 0..10 {
+    //    commands.spawn((
+    //        Sphere,
+    //        TransformBundle::from_transform(
+    //            Transform::from_translation(Vec3::new(-5.0 + i as f32, 0.5, 0.0)).with_scale(Vec3::splat(1.0)),
+    //        ),
+    //        RigidBody::Fixed,
+    //        Collider::ball(0.5),
+    //    ));
+    //}
+
     commands.spawn(Camera3dBundle {
         transform: Transform::from_xyz(0.0, 0.0, -3.0),
         ..default()
@@ -135,6 +132,7 @@ fn startup(
             Transform::from_scale(Vec3::splat(0.01)).with_rotation(Quat::from_rotation_x(0.0)),
         ),
     ));
+    
 
     commands.insert_resource(game_assets);
 
@@ -162,6 +160,19 @@ fn report_fps(time: Res<Time>, input: Res<Input<KeyCode>>, mut ravg: Local<f32>)
         *ravg = 1.0 / time.delta_seconds();
     }
     *ravg = *ravg * 0.98 + 0.02 * (1.0 / time.delta_seconds());
+}
+
+fn move_sphere(input: Res<Input<KeyCode>>, time: Res<Time>, mut spheres: Query<&mut Transform, With<Sphere>>) {
+    let f = time.delta_seconds();
+    for mut sphere in spheres.iter_mut() {
+        if input.pressed(KeyCode::P) {
+            sphere.translation += Vec3::Y * f;
+        }
+
+        if input.pressed(KeyCode::O) {
+            sphere.translation -= Vec3::Y * f;
+        }
+    }
 }
 
 fn player_controls(input: Res<Input<KeyCode>>, time: Res<Time>, mut camera: Query<&mut Transform, With<Camera3d>>) {

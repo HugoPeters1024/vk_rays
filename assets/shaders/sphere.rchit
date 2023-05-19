@@ -20,7 +20,12 @@ void main() {
   payload.surface_normal = world_normal;
   payload.normal = world_normal;
   payload.emission = vec3(0.0);
+  payload.metallic = 0.00f;
   payload.roughness = 0.00f;
   payload.transmission = 1.00f;
   payload.refract_index = 1.33f;
+
+  payload.transmission = 0.0f;
+  payload.roughness = float(gl_InstanceID) / 10.0f;
+  payload.metallic = 1.0f;
 }

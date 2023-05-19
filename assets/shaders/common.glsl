@@ -75,7 +75,7 @@ struct Vertex {
   vec2 uv;
 };
 
-struct Material {
+struct GltfMaterial {
   vec4 diffuse_factor;
   uint diffuse_texture;
   uint normal_texture;
@@ -96,7 +96,7 @@ layout (buffer_reference, scalar, buffer_reference_align = 8) readonly buffer In
 };
 
 layout (buffer_reference, scalar, buffer_reference_align = 8) readonly buffer MaterialData {
-  Material materials[];
+  GltfMaterial materials[];
 };
 
 layout(buffer_reference, scalar, buffer_reference_align = 8) readonly buffer SphereData

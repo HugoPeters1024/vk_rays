@@ -15,15 +15,29 @@ vec3 ACES(const vec3 x) {
     return (x * (a * x + b)) / (x * (c * x + d) + e);
 }
 
+// Uncharted 2 tone map
+// see: http://filmicworlds.com/blog/filmic-tonemapping-operators/
+vec3 toneMapUncharted2Impl(vec3 color)
+{
+  const float A = 0.15;
+  const float B = 0.50;
+  const float C = 0.10;
+  const float D = 0.20;
+  const float E = 0.02;
+  const float F = 0.30;
+  return ((color * (A * color + C * B) + D * E) / (color * (A * color + B) + D * F)) - E / F;
+}
+
 void main() {
     const float gamma = 2.2f;
-    const float exposure = 1.0;
+    const float exposure = 2.6;
 
     vec4 bufferVal = texture(test, uv);
 
     vec3 hdrColor = bufferVal.xyz / bufferVal.w;
-    vec3 mapped = pow(vec3(1.0f) - exp(-hdrColor * exposure), vec3(1.0f / gamma));
+    vec3 corrected = pow(vec3(1.0f) - exp(-hdrColor * exposure), vec3(1.0f / gamma));
+    vec3 mapped = ACES(corrected);
 
-    oColor = vec4(mapped, 1.0f);
+    oColor = vec4(mix(mapped, corrected, 0.4), 1.0f);
 }
 

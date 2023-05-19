@@ -5,6 +5,7 @@
 
 #include "rand.glsl"
 #include "common.glsl"
+#include "brdf.glsl"
 
 
 layout(set=0, binding=0, rgba32f) uniform image2D                  render_target;
@@ -17,16 +18,16 @@ layout(push_constant, std430) uniform Registers {
 layout(location = 0) rayPayloadEXT HitPayload payload;
 
 uint getSeed() {
-    uint r = wang_hash(gl_LaunchIDEXT.x + gl_LaunchSizeEXT.x * gl_LaunchIDEXT.y);
+    uint entropy = 0;
     if (uniforms.should_clear == 0) {
-      r += uniforms.entropy;
+      entropy = uniforms.entropy;
     }
-    return r;
+    return initRandom(gl_LaunchIDEXT.xy, gl_LaunchIDEXT.xy, entropy);
 }
 
 void main() {
-  uint seed = getSeed();
-  const vec2 pixel_center = vec2(gl_LaunchIDEXT.xy) + vec2(randf(seed), randf(seed));
+  g_seed = getSeed();
+  const vec2 pixel_center = vec2(gl_LaunchIDEXT.xy) + vec2(randf(), randf());
   const vec2 inUV = pixel_center / vec2(gl_LaunchSizeEXT.xy);
   vec2 d = inUV * 2.0 - 1.0;
 
@@ -35,11 +36,11 @@ void main() {
   vec3 start_direction = (uniforms.inverse_view * vec4(normalize(target), 0)).xyz;
 
 
-  const float tmin = 0.0001;
+  const float tmin = 0.001;
   const float tmax = 100.0;
 
   vec3 accum = vec3(0.0);
-  const uint MAX_SAMPLES = 4;
+  const uint MAX_SAMPLES = 1;
 
   for(uint s = 0; s<MAX_SAMPLES; s++) {
     vec3 mask = vec3(1.0);
@@ -61,13 +62,12 @@ void main() {
 
       // russian roullete
       const float pRussian = clamp(max3(payload.color), 0.1, 0.9);
-      if (randf(seed) > pRussian) {
+      if (randf() > pRussian) {
         break;
       }
       mask /= pRussian;
-
-
       mask *= payload.color;
+
 
       bool inside = dot(direction, -payload.surface_normal) < 0;
       if (inside) {
@@ -75,9 +75,10 @@ void main() {
         payload.surface_normal = -payload.surface_normal;
       }
 
-      const vec3 sample_dir = alignToNormalZUP(SampleHemisphereCosine(seed), payload.normal);
+      vec3 sample_dir = alignToNormalZUP(CosineSampleHemisphere(randf(), randf()), payload.normal);
+
       origin = origin + payload.t * direction;
-      if (randf(seed) < payload.transmission) {
+      if (randf() < payload.transmission) {
         // calculate the eta based on whether we are inside
         const float n1 = inside ? payload.refract_index : 1.0f;
         const float n2 = inside ? 1.0f : payload.refract_index;
@@ -101,19 +102,34 @@ void main() {
         }
 
         vec3 refract_dir;
-        if (randf(seed) < pReflect) {
+        if (randf() < pReflect) {
             refract_dir = reflect(direction, payload.normal);
         } else {
+            origin += 0.002 * direction;
             refract_dir = normalize(eta * direction + payload.normal * (eta * costi - sqrt(k)));
         }
 
         direction = mix(refract_dir, sample_dir, payload.roughness);
       } else {
+        Material mat;
+        mat.albedo = payload.color;
+        mat.metallic = payload.metallic;
+        mat.roughness = payload.roughness;
+        mat.emissive = vec3(0);
+
+        vec3 outDir;
+        vec4 brdf = sampleDisneyBRDF(-direction, payload.normal, mat, outDir);
+
+        if (brdf.a > 0.0) {
+          mask *= brdf.rgb / brdf.a;
+        }
+
+        direction = outDir;
+
         // reflection
         vec3 reflect_dir = reflect(direction, payload.normal);
-        direction = mix(reflect_dir, sample_dir, payload.roughness);
         if (dot(direction, payload.surface_normal) < 0) {
-          direction = reflect(direction, payload.surface_normal);
+          break;
         }
       }
     }

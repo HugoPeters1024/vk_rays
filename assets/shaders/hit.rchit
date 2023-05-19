@@ -44,7 +44,7 @@ void main()
   const vec3 barycentricCoords = vec3(1.0f - attribs.x - attribs.y, attribs.x, attribs.y);
 
   const uint index_offset = o.offsets[gl_GeometryIndexEXT];
-  const Material material = m.materials[gl_GeometryIndexEXT];
+  const GltfMaterial material = m.materials[gl_GeometryIndexEXT];
 
   const Vertex v0 = v.vertices[i.indices[index_offset + gl_PrimitiveID * 3 + 0]];
   const Vertex v1 = v.vertices[i.indices[index_offset + gl_PrimitiveID * 3 + 1]];
@@ -56,7 +56,7 @@ void main()
 
   payload.t = gl_HitTEXT;
   if (material.diffuse_texture != 0xFFFFFFFF) {
-    payload.color = pow(texture(textures[material.diffuse_texture], uv).xyz, vec3(2.2));
+    payload.color = pow(textureLod(textures[material.diffuse_texture], uv, 0).xyz, vec3(2.2));
   } else {
     payload.color = vec3(0.6);
   }
@@ -67,7 +67,7 @@ void main()
     mat3 TBN = mat3(tangent, bitangent, normal);
 
     // normalize due to linear filtering
-    const vec3 tex_normal = normalize(texture(textures[material.normal_texture], uv).xyz * 2.0 - 1.0);
+    const vec3 tex_normal = normalize(textureLod(textures[material.normal_texture], uv, 0).xyz * 2.0 - 1.0);
     payload.normal = normalize(TBN * tex_normal);
   } else {
     payload.normal = normal;
@@ -77,16 +77,18 @@ void main()
   payload.normal = normalize((gl_ObjectToWorldEXT * vec4(payload.normal, 0.0)).xyz);
 
   payload.emission = vec3(0);
-  payload.roughness = 1.0f;
+  payload.roughness = 0.1f;
   payload.transmission = 0.0f;
   payload.refract_index = 1.05;
 
-  if (gl_GeometryIndexEXT == 7) {
-    payload.emission = vec3(3.0);
+  if (gl_GeometryIndexEXT == 9) {
+//    payload.emission = vec3(1.0, 0.8, 0.2);
   }
 
+  payload.metallic = 0.0f;
+  payload.roughness = 1.0f;
   if (material.metallic_roughness_texture != 0xFFFFFFFF) {
-    vec2 roughness_and_metallic = texture(textures[material.metallic_roughness_texture], uv).gb;
+    vec2 roughness_and_metallic = textureLod(textures[material.metallic_roughness_texture], uv, 0).gb;
     payload.roughness = roughness_and_metallic.x;
     payload.metallic = roughness_and_metallic.y;
   }

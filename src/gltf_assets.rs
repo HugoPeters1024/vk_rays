@@ -185,7 +185,7 @@ impl VulkanAsset for GltfMesh {
                                 device_address: vertex_buffer_device.address,
                             })
                             .vertex_stride(std::mem::size_of::<Vertex>() as u64)
-                            .max_vertex(geometry.vertex_count as u32)
+                            .max_vertex(0)
                             .index_type(vk::IndexType::UINT32)
                             .index_data(vk::DeviceOrHostAddressConstKHR {
                                 device_address: index_buffer_device.address,
