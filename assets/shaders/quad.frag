@@ -30,7 +30,7 @@ vec3 toneMapUncharted2Impl(vec3 color)
 
 void main() {
     const float gamma = 2.2f;
-    const float exposure = 2.6;
+    const float exposure = 4.6;
 
     vec4 bufferVal = texture(test, uv);
 

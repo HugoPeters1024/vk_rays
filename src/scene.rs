@@ -6,9 +6,11 @@ use crate::{
     gltf_assets::GltfMesh,
     render_buffer::{Buffer, BufferProvider},
     render_device::RenderDevice,
+    shader_binding_table::SBT,
     sphere_blas::{Sphere, SphereBLAS},
+    vk_utils,
     vulkan_assets::{VkAssetCleanupPlaybook, VulkanAssets},
-    vulkan_cleanup::{VkCleanup, VkCleanupEvent}, shader_binding_table::SBT,
+    vulkan_cleanup::{VkCleanup, VkCleanupEvent},
 };
 
 #[derive(Resource, Default)]
@@ -173,11 +175,14 @@ fn update_scene(
     }
     .unwrap();
 
-    if build_sizes.build_scratch_size != scene.scratch_buffer.nr_elements {
+    let as_props = vk_utils::get_acceleration_structure_properties(&device);
+    let scratch_alignment = as_props.min_acceleration_structure_scratch_offset_alignment as u64;
+    let scratch_size = build_sizes.build_scratch_size + scratch_alignment;
+
+    if scratch_size != scene.scratch_buffer.nr_elements {
         //println!("Scene: Resizing scratch buffer to {} bytes", build_sizes.build_scratch_size);
         cleanup.send(VkCleanupEvent::Buffer(scene.scratch_buffer.handle));
-        scene.scratch_buffer =
-            device.create_device_buffer(build_sizes.build_scratch_size, vk::BufferUsageFlags::STORAGE_BUFFER);
+        scene.scratch_buffer = device.create_device_buffer(scratch_size, vk::BufferUsageFlags::STORAGE_BUFFER);
     }
 
     let build_geometry = vk::AccelerationStructureBuildGeometryInfoKHR::builder()
@@ -187,7 +192,7 @@ fn update_scene(
         .dst_acceleration_structure(scene.tlas.handle)
         .geometries(std::slice::from_ref(&geometry))
         .scratch_data(vk::DeviceOrHostAddressKHR {
-            device_address: scene.scratch_buffer.address,
+            device_address: scene.scratch_buffer.address + scratch_alignment - scene.scratch_buffer.address % scratch_alignment,
         });
 
     let build_range = vk::AccelerationStructureBuildRangeInfoKHR::builder()

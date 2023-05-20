@@ -32,3 +32,16 @@ pub fn get_raytracing_properties(device: &RenderDevice) -> vk::PhysicalDeviceRay
     }
     raytracing_properties
 }
+
+pub fn get_acceleration_structure_properties(device: &RenderDevice) -> vk::PhysicalDeviceAccelerationStructurePropertiesKHR {
+    let mut acceleration_structure_properties = vk::PhysicalDeviceAccelerationStructurePropertiesKHR::default();
+    let mut properties2 = vk::PhysicalDeviceProperties2KHR::builder()
+        .push_next(&mut acceleration_structure_properties)
+        .build();
+    unsafe {
+        device
+            .instance
+            .get_physical_device_properties2(device.physical_device, &mut properties2)
+    }
+    acceleration_structure_properties
+}

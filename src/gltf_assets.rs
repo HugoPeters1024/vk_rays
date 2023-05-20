@@ -12,7 +12,7 @@ use crate::{
     render_image::VkImage,
     texture::{load_texture_from_bytes, padd_pixel_bytes_rgba_unorm},
     vulkan_assets::VulkanAsset,
-    vulkan_cleanup::{VkCleanup, VkCleanupEvent},
+    vulkan_cleanup::{VkCleanup, VkCleanupEvent}, vk_utils,
 };
 
 #[derive(TypeUuid, Default, Clone)]
@@ -97,6 +97,7 @@ impl VulkanAsset for GltfMesh {
     fn prepare_asset(device: &RenderDevice, asset: Self::ExtractedAsset) -> Self::PreparedAsset {
         let mesh = asset.single_mesh();
         let (vertex_count, index_count) = extract_mesh_sizes(&mesh);
+        let as_propeties = vk_utils::get_acceleration_structure_properties(device);
 
         let mut vertex_buffer_host: Buffer<Vertex> = device.create_host_buffer(
             vertex_count as u64,
@@ -199,7 +200,10 @@ impl VulkanAsset for GltfMesh {
 
         let combined_build_info = vk::AccelerationStructureBuildGeometryInfoKHR::builder()
             .ty(vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL)
-            .flags(vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE)
+            .flags(
+                vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE
+                    | vk::BuildAccelerationStructureFlagsKHR::ALLOW_COMPACTION,
+            )
             .geometries(&geometry_infos);
 
         let primitive_counts = geometries_descrs
@@ -218,17 +222,21 @@ impl VulkanAsset for GltfMesh {
         let mut acceleration_structure =
             allocate_acceleration_structure(&device, vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL, &geometry_sizes);
 
+        let scratch_alignment = as_propeties.min_acceleration_structure_scratch_offset_alignment as u64;
         let scratch_buffer: Buffer<u8> =
-            device.create_device_buffer(geometry_sizes.build_scratch_size, vk::BufferUsageFlags::STORAGE_BUFFER);
+            device.create_device_buffer(geometry_sizes.build_scratch_size + scratch_alignment, vk::BufferUsageFlags::STORAGE_BUFFER);
 
         let build_geometry_info = vk::AccelerationStructureBuildGeometryInfoKHR::builder()
             .ty(vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL)
-            .flags(vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE)
+            .flags(
+                vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE
+                    | vk::BuildAccelerationStructureFlagsKHR::ALLOW_COMPACTION,
+            )
             .mode(vk::BuildAccelerationStructureModeKHR::BUILD)
             .dst_acceleration_structure(acceleration_structure.handle)
             .geometries(&geometry_infos)
             .scratch_data(vk::DeviceOrHostAddressKHR {
-                device_address: scratch_buffer.address,
+                device_address: scratch_buffer.address + scratch_alignment - scratch_buffer.address % scratch_alignment,
             })
             .build();
 
@@ -259,6 +267,87 @@ impl VulkanAsset for GltfMesh {
 
         device.destroy_buffer(scratch_buffer);
 
+        let query_pool_info = vk::QueryPoolCreateInfo::builder()
+            .query_type(vk::QueryType::ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR)
+            .query_count(1);
+
+        let query_pool = unsafe { device.device.create_query_pool(&query_pool_info, None) }.unwrap();
+        unsafe {
+            device.run_asset_commands(&|cmd_buffer| {
+                device.device.cmd_reset_query_pool(cmd_buffer, query_pool, 0, 1);
+            })
+        }
+
+        unsafe {
+            device.run_asset_commands(&|cmd_buffer| {
+                device.exts.rt_acc_struct.cmd_write_acceleration_structures_properties(
+                    cmd_buffer,
+                    std::slice::from_ref(&acceleration_structure.handle),
+                    vk::QueryType::ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR,
+                    query_pool,
+                    0,
+                );
+            })
+        }
+
+        let mut compacted_sizes = [0];
+        unsafe {
+            device
+                .device
+                .get_query_pool_results::<u64>(query_pool, 0, 1, &mut compacted_sizes, vk::QueryResultFlags::WAIT)
+                .unwrap();
+        };
+
+        println!(
+            "BLAS compaction: {} -> {} ({}%)",
+            geometry_sizes.acceleration_structure_size,
+            compacted_sizes[0],
+            (compacted_sizes[0] as f32 / geometry_sizes.acceleration_structure_size as f32) * 100.0
+        );
+
+        let compacted_buffer = device.create_device_buffer::<u8>(
+            compacted_sizes[0],
+            vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR,
+        );
+
+        let compacted_as_info = vk::AccelerationStructureCreateInfoKHR::builder()
+            .ty(vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL)
+            .size(compacted_sizes[0])
+            .buffer(compacted_buffer.handle)
+            .build();
+
+        let compacted_as = unsafe {
+            device
+                .exts
+                .rt_acc_struct
+                .create_acceleration_structure(&compacted_as_info, None)
+        }
+        .unwrap();
+
+        unsafe {
+            device.run_asset_commands(&|cmd_buffer| {
+                let copy_info = vk::CopyAccelerationStructureInfoKHR::builder()
+                    .src(acceleration_structure.handle)
+                    .dst(compacted_as)
+                    .mode(vk::CopyAccelerationStructureModeKHR::COMPACT)
+                    .build();
+                device
+                    .exts
+                    .rt_acc_struct
+                    .cmd_copy_acceleration_structure(cmd_buffer, &copy_info);
+            })
+        }
+
+        unsafe {
+            device
+                .exts
+                .rt_acc_struct
+                .destroy_acceleration_structure(acceleration_structure.handle, None);
+            device.destroy_buffer(acceleration_structure.buffer);
+            device.device.destroy_query_pool(query_pool, None);
+        }
+        acceleration_structure.buffer = compacted_buffer;
+        acceleration_structure.handle = compacted_as;
         acceleration_structure.address = unsafe {
             device.exts.rt_acc_struct.get_acceleration_structure_device_address(
                 &vk::AccelerationStructureDeviceAddressInfoKHR::builder()
@@ -272,7 +361,7 @@ impl VulkanAsset for GltfMesh {
         let mut geometry_to_material_host_view = device.map_buffer(&mut geometry_to_material_host);
         let mut loaded_textures: HashMap<usize, VkImage> = HashMap::new();
 
-        let mut load_cached_texture = |image_idx:usize| {
+        let mut load_cached_texture = |image_idx: usize| {
             if let Some(res) = loaded_textures.get(&image_idx) {
                 return device.get_texture_descriptor_index(res.view);
             }
@@ -290,19 +379,28 @@ impl VulkanAsset for GltfMesh {
                 diffuse_factor: [1.0; 4],
                 diffuse_texture: 0xFFFFFFFF,
                 normal_texture: 0xFFFFFFFF,
+                metallic_factor: primitive.material().pbr_metallic_roughness().metallic_factor(),
+                roughness_factor: primitive.material().pbr_metallic_roughness().roughness_factor(),
                 metallic_roughness_texture: 0xFFFFFFFF,
             };
 
             if let Some(diffuse_texture) = primitive.material().pbr_metallic_roughness().base_color_texture() {
-                geometry_to_material_host_view[geometry_id].diffuse_texture = load_cached_texture(diffuse_texture.texture().source().index());
+                geometry_to_material_host_view[geometry_id].diffuse_texture =
+                    load_cached_texture(diffuse_texture.texture().source().index());
             }
 
             if let Some(normal_texture) = primitive.material().normal_texture() {
-                geometry_to_material_host_view[geometry_id].normal_texture = load_cached_texture(normal_texture.texture().source().index());
+                geometry_to_material_host_view[geometry_id].normal_texture =
+                    load_cached_texture(normal_texture.texture().source().index());
             }
 
-            if let Some(metallic_rougness_texture) = primitive.material().pbr_metallic_roughness().metallic_roughness_texture() {
-                geometry_to_material_host_view[geometry_id].metallic_roughness_texture = load_cached_texture(metallic_rougness_texture.texture().source().index());
+            if let Some(metallic_rougness_texture) = primitive
+                .material()
+                .pbr_metallic_roughness()
+                .metallic_roughness_texture()
+            {
+                geometry_to_material_host_view[geometry_id].metallic_roughness_texture =
+                    load_cached_texture(metallic_rougness_texture.texture().source().index());
             }
         }
 
@@ -393,6 +491,20 @@ fn extract_mesh_data(gltf: &GltfMesh, vertex_buffer: &mut [Vertex], index_buffer
         assert!(normal_reader.len() == geometry.vertex_count);
 
         for (i, normal) in normal_reader.enumerate() {
+            if normal[0].is_nan() || normal[1].is_nan() || normal[2].is_nan() {
+                vertex_buffer[geometry.first_vertex + i].normal[0] = 0.0;
+                vertex_buffer[geometry.first_vertex + i].normal[1] = 0.0;
+                vertex_buffer[geometry.first_vertex + i].normal[2] = 0.0;
+                continue;
+            }
+
+            if (1.0 - (normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]).sqrt()).abs() > 0.01 {
+                vertex_buffer[geometry.first_vertex + i].normal[0] = 1.0;
+                vertex_buffer[geometry.first_vertex + i].normal[1] = 0.0;
+                vertex_buffer[geometry.first_vertex + i].normal[2] = 0.0;
+                continue;
+            }
+
             vertex_buffer[geometry.first_vertex + i].normal[0] = normal[0];
             vertex_buffer[geometry.first_vertex + i].normal[1] = normal[1];
             vertex_buffer[geometry.first_vertex + i].normal[2] = normal[2];
@@ -435,5 +547,11 @@ fn load_gltf_texture(device: &RenderDevice, asset: &GltfMesh, image_idx: usize) 
         }
     };
 
-    Some(load_texture_from_bytes(device, format, &bytes, image.width, image.height))
+    Some(load_texture_from_bytes(
+        device,
+        format,
+        &bytes,
+        image.width,
+        image.height,
+    ))
 }

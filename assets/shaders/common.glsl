@@ -79,6 +79,8 @@ struct GltfMaterial {
   vec4 diffuse_factor;
   uint diffuse_texture;
   uint normal_texture;
+  float metallic_factor;
+  float roughness_factor;
   uint metallic_roughness_texture;
 };
 

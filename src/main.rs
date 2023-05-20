@@ -97,16 +97,16 @@ fn startup(
     mut rt_pipelines: ResMut<Assets<RaytracingPipeline>>,
     mut rast_pipelines: ResMut<Assets<RasterizationPipeline>>,
 ) {
-    //for i in 0..10 {
-    //    commands.spawn((
-    //        Sphere,
-    //        TransformBundle::from_transform(
-    //            Transform::from_translation(Vec3::new(-5.0 + i as f32, 0.5, 0.0)).with_scale(Vec3::splat(1.0)),
-    //        ),
-    //        RigidBody::Fixed,
-    //        Collider::ball(0.5),
-    //    ));
-    //}
+    for i in 0..10 {
+        commands.spawn((
+            Sphere,
+            TransformBundle::from_transform(
+                Transform::from_translation(Vec3::new(-5.0 + i as f32, 0.5, 0.0)).with_scale(Vec3::splat(0.9)),
+            ),
+            RigidBody::Fixed,
+            Collider::ball(0.5),
+        ));
+    }
 
     commands.spawn(Camera3dBundle {
         transform: Transform::from_xyz(0.0, 0.0, -3.0),

@@ -50,7 +50,15 @@ void main()
   const Vertex v1 = v.vertices[i.indices[index_offset + gl_PrimitiveID * 3 + 1]];
   const Vertex v2 = v.vertices[i.indices[index_offset + gl_PrimitiveID * 3 + 2]];
 
-  const vec3 normal = v0.normal * barycentricCoords.x + v1.normal * barycentricCoords.y + v2.normal * barycentricCoords.z;
+
+  vec3 normal = v0.normal * barycentricCoords.x + v1.normal * barycentricCoords.y + v2.normal * barycentricCoords.z;
+  if (abs(1-length(normal)) > 0.001f) {
+    const vec3 v0v1 = v1.pos - v0.pos;
+    const vec3 v0v2 = v2.pos - v0.pos;
+    normal = normalize(cross(v0v1, v0v2));
+  } else{
+    normal = normalize(normal);
+  }
   const vec2 uv = v0.uv * barycentricCoords.x + v1.uv * barycentricCoords.y + v2.uv * barycentricCoords.z;
 
 
@@ -82,15 +90,15 @@ void main()
   payload.refract_index = 1.05;
 
   if (gl_GeometryIndexEXT == 9) {
-//    payload.emission = vec3(1.0, 0.8, 0.2);
+//    payload.emission = vec3(1.0, 0.8, 0.2) * 10;
   }
 
-  payload.metallic = 0.0f;
-  payload.roughness = 1.0f;
+  payload.metallic = material.metallic_factor;
+  payload.roughness = material.roughness_factor;
   if (material.metallic_roughness_texture != 0xFFFFFFFF) {
     vec2 roughness_and_metallic = textureLod(textures[material.metallic_roughness_texture], uv, 0).gb;
-    payload.roughness = roughness_and_metallic.x;
-    payload.metallic = roughness_and_metallic.y;
+    payload.roughness *= roughness_and_metallic.x;
+    payload.metallic *= roughness_and_metallic.y;
   }
 }
 

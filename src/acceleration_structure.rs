@@ -17,6 +17,8 @@ pub struct TriangleMaterial {
     pub diffuse_factor: [f32;4],
     pub diffuse_texture: u32,
     pub normal_texture: u32,
+    pub metallic_factor: f32,
+    pub roughness_factor: f32,
     pub metallic_roughness_texture: u32,
 }
 
