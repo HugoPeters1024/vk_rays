@@ -13,6 +13,7 @@ layout(set=0, binding=1)          uniform accelerationStructureEXT topLevelAS;
 
 layout(push_constant, std430) uniform Registers {
   UniformData uniforms;
+  QueryData queries;
 };
 
 layout(location = 0) rayPayloadEXT HitPayload payload;
@@ -31,18 +32,31 @@ void main() {
   const vec2 inUV = pixel_center / vec2(gl_LaunchSizeEXT.xy);
   vec2 d = inUV * 2.0 - 1.0;
 
+  const float focalDistance = queries.focal_distance;
+  const float aperature = 0.005f;
+  const float offsetR = sqrt(randf());
+  const float offsetA = randf() * 2.0f * PI;
+  const vec2 focalOffset = aperature * vec2(offsetR * sin(offsetA), offsetR * cos(offsetA));
+
+  const vec3 viewDirHorz = normalize(uniforms.inverse_view * vec4(1,0,0,0)).xyz;
+  const vec3 viewDirVert = normalize(uniforms.inverse_view * vec4(0,1,0,0)).xyz;
+
   vec3 start_origin = (uniforms.inverse_view * vec4(0,0,0,1)).xyz;
-  vec3 target = (uniforms.inverse_proj * vec4(d.x, d.y, 1, 1)).xyz;
+  vec3 target = (uniforms.inverse_proj * vec4(d.x, d.y, 1, 1.0)).xyz;
   vec3 start_direction = (uniforms.inverse_view * vec4(normalize(target), 0)).xyz;
+
+  const vec3 focalPoint = start_origin + focalDistance * start_direction;
+  start_origin += focalOffset.x * viewDirHorz + focalOffset.y * viewDirVert;
+  start_direction = normalize(focalPoint - start_origin);
 
 
   const float tmin = 0.0001;
   const float tmax = 10000.0;
 
   vec3 accum = vec3(0.0);
-  uint MAX_SAMPLES = 2;
+  uint MAX_SAMPLES = 1;
   if (uniforms.should_clear == 0) {
-    MAX_SAMPLES = 16;
+    MAX_SAMPLES = 4;
   }
 
   for(uint s = 0; s<MAX_SAMPLES; s++) {
@@ -50,30 +64,32 @@ void main() {
     vec3 origin = start_origin;
     vec3 direction = start_direction;
 
-    for(uint bounce=0; bounce<32; bounce++) {
+    for(uint bounce=0; bounce<256; bounce++) {
       traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xFF, 0, 0, 0, origin, tmin, direction, tmax, 0);
 
       accum += mask * payload.emission;
-      if (payload.t == -1.0) {
+      if (payload.t == 0.0) {
         break;
       }
 
+      if (s == 0 && bounce == 0 && uniforms.mouse_x != 0 && uniforms.mouse_y != 0 && uniforms.mouse_x == gl_LaunchIDEXT.x && uniforms.mouse_y == gl_LaunchIDEXT.y) {
+        queries.focal_distance = payload.t;
+      }
+
       origin = origin + payload.t * direction;
-      if (max3(payload.color) == 0.0) {
+      if (randf() < 1-payload.color.a) {
         continue;
       }
 
-
       // russian roullete
-      const float pRussian = clamp(max3(payload.color), 0.1, 0.9);
+      const float pRussian = clamp(max3(payload.color.rgb), 0.1, 0.9);
       if (randf() > pRussian) {
         break;
       }
       mask /= pRussian;
-      mask *= payload.color;
+      mask *= payload.color.rgb;
 
 
-      bool inside = dot(direction, -payload.surface_normal) < 0;
       vec3 sample_dir = alignToNormalZUP(CosineSampleHemisphere(randf(), randf()), payload.normal);
 
 
@@ -115,7 +131,7 @@ void main() {
       } else {
 
         Material mat;
-        mat.albedo = payload.color;
+        mat.albedo = payload.color.rgb;
         mat.metallic = payload.metallic;
         mat.roughness = payload.roughness;
         mat.emissive = vec3(0);
@@ -128,7 +144,6 @@ void main() {
         }
 
         direction = outDir;
-        origin += 0.00001 * payload.surface_normal;
 
         // reflection
         vec3 reflect_dir = reflect(direction, payload.normal);

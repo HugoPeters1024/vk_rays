@@ -425,7 +425,7 @@ impl RenderDeviceImpl {
         }
     }
 
-    pub unsafe fn run_single_commands(&self, f: &dyn Fn(vk::CommandBuffer)) {
+    pub unsafe fn run_single_commands(&self, f: impl FnOnce(vk::CommandBuffer)) {
         let queue = self.queue.lock().unwrap();
         self.device
             .reset_command_buffer(self.single_time_command_buffer, vk::CommandBufferResetFlags::empty())

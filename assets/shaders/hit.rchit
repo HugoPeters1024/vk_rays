@@ -65,22 +65,18 @@ void main()
     normal = -normal;
   }
 
-
-
   const vec2 uv = v0.uv * barycentricCoords.x + v1.uv * barycentricCoords.y + v2.uv * barycentricCoords.z;
-
-
   payload.t = gl_HitTEXT;
 
+  payload.color = material.diffuse_factor;
   if (material.diffuse_texture != 0xFFFFFFFF) {
-    payload.color = pow(textureLod(textures[material.diffuse_texture], uv, 0).xyz, vec3(2.2));
-  } else {
-    payload.color = vec3(0.6);
+    vec4 diffuse_color = textureLod(textures[material.diffuse_texture], uv, 0);
+    payload.color *= vec4(pow(diffuse_color.rgb, vec3(2.2)), diffuse_color.a);
   }
 
-  payload.emission = material.emissive_factor;
+  payload.emission = material.emissive_factor * 100;
   if (material.emissive_texture != 0xFFFFFFFF) {
-    payload.emission *= textureLod(textures[material.emissive_texture], uv, 0).xyz;
+    payload.emission *= pow(textureLod(textures[material.emissive_texture], uv, 0).xyz, vec3(2.2));
   }
 
 
@@ -100,9 +96,9 @@ void main()
   payload.surface_normal = normalize((gl_ObjectToWorldEXT * vec4(surface_normal, 0.0)).xyz);
   payload.normal = normalize((gl_ObjectToWorldEXT * vec4(payload.normal, 0.0)).xyz);
 
+  payload.transmission = 0.0f;
   payload.absorption = 0;
   payload.roughness = 0.1f;
-  payload.transmission = 0.0f;
   payload.refract_index = 1.05;
 
   if (gl_GeometryIndexEXT == 9) {
@@ -115,10 +111,6 @@ void main()
     vec2 roughness_and_metallic = textureLod(textures[material.metallic_roughness_texture], uv, 0).gb;
     payload.roughness *= roughness_and_metallic.x;
     payload.metallic *= roughness_and_metallic.y;
-  }
-
-  if (gl_GeometryIndexEXT == 8) {
-    payload.transmission = 1.0f;
   }
 }
 

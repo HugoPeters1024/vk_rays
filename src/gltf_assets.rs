@@ -376,7 +376,7 @@ impl VulkanAsset for GltfMesh {
 
         for (geometry_id, primitive) in mesh.primitives().enumerate() {
             geometry_to_material_host_view[geometry_id] = TriangleMaterial {
-                diffuse_factor: [1.0; 4],
+                diffuse_factor: primitive.material().pbr_metallic_roughness().base_color_factor(),
                 diffuse_texture: 0xFFFFFFFF,
                 normal_texture: 0xFFFFFFFF,
                 metallic_factor: primitive.material().pbr_metallic_roughness().metallic_factor(),

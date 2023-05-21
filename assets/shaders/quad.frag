@@ -28,15 +28,22 @@ vec3 toneMapUncharted2Impl(vec3 color)
   return ((color * (A * color + C * B) + D * E) / (color * (A * color + B) + D * F)) - E / F;
 }
 
+vec3 tonemapFilmic(const vec3 color) {
+	vec3 x = max(vec3(0.0), color - 0.004);
+	return (x * (6.2 * x + 0.5)) / (x * (6.2 * x + 1.7) + 0.06);
+}
+
 void main() {
-    const float gamma = 3.2f;
-    const float exposure = 180.6;
+    const float gamma = 2.6f;
+    const float exposure = 5.0;
 
     vec4 bufferVal = texture(test, uv);
 
     vec3 hdrColor = bufferVal.xyz / bufferVal.w;
-    vec3 corrected = pow(vec3(1.0f) - exp(-hdrColor * exposure), vec3(1.0f / gamma));
+    vec3 mapped = vec3(1.0) - exp(-hdrColor * exposure);
+    // gamma correction
+    mapped = pow(mapped, vec3(1.0f / gamma));
 
-    oColor = vec4(corrected, 1.0f);
+    oColor = vec4(mapped, 1.0f);
 }
 

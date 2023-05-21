@@ -41,7 +41,7 @@ vec3 alignToNormalZUP(in vec3 s, in vec3 normal)
 struct HitPayload {
   float t;
   bool inside;
-  vec3 color;
+  vec4 color;
   vec3 surface_normal;
   vec3 normal;
   vec3 emission;
@@ -115,6 +115,12 @@ layout (buffer_reference, scalar, buffer_reference_align = 8) readonly buffer Un
   mat4 inverse_proj;
   uint entropy;
   uint should_clear;
+  uint mouse_x;
+  uint mouse_y;
+};
+
+layout (buffer_reference, scalar, buffer_reference_align = 8) buffer QueryData {
+  float focal_distance;
 };
 
 

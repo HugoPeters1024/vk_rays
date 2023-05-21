@@ -25,12 +25,13 @@ use std::time::Duration;
 use bevy::asset::HandleId;
 use bevy::prelude::*;
 use bevy::time::common_conditions::on_timer;
+use bevy::window::PrimaryWindow;
 use bevy_rapier3d::prelude::*;
 use camera::{Camera3d, Camera3dBundle};
 use clap::Parser;
 use gltf_assets::GltfMesh;
 use rasterization_pipeline::RasterizationPipeline;
-use render_plugin::RenderConfig;
+use render_plugin::{RenderConfig, RayFocalFocus};
 use sphere_blas::Sphere;
 
 use crate::raytracing_pipeline::RaytracingPipeline;
@@ -47,6 +48,7 @@ struct GameAssets {
     box_mesh: Handle<GltfMesh>,
     sponza: Handle<GltfMesh>,
     bistro_interior: Handle<GltfMesh>,
+    bistro_exterior: Handle<GltfMesh>,
 }
 
 #[derive(Component)]
@@ -82,6 +84,7 @@ fn main() {
         })
         .add_startup_system(startup)
         .add_system(camera_clear)
+        .add_system(mouse_click)
         .add_system(move_sphere)
         .add_system(report_fps)
         .add_system(player_controls)
@@ -116,7 +119,7 @@ fn startup(
     });
 
     let game_assets = GameAssets {
-        bistro_interior: assets.load("models/bistro_interior.glb"),
+        bistro_exterior: assets.load("models/bistro_exterior.glb"),
         ..default()
     };
 
@@ -129,7 +132,7 @@ fn startup(
     //));
     //
     commands.spawn((
-        game_assets.bistro_interior.clone(),
+        game_assets.bistro_exterior.clone(),
         TransformBundle::from_transform(
             Transform::from_scale(Vec3::splat(0.01)).with_rotation(Quat::from_rotation_x(0.0)),
         ),
@@ -231,6 +234,16 @@ fn camera_clear(input: Res<Input<KeyCode>>, mut q: Query<&mut Camera3d>) {
     let mut camera = q.single_mut();
     if input.just_pressed(KeyCode::Space) {
         camera.clear = !camera.clear;
+    }
+}
+
+fn mouse_click(input: Res<Input<MouseButton>>, window: Query<&Window, With<PrimaryWindow>>, mut focus: ResMut<RayFocalFocus>) {
+    if input.pressed(MouseButton::Left) {
+        let window = window.single();
+        let mouse_pos = window.cursor_position().unwrap();
+        focus.0 = Some((mouse_pos.x as u32, mouse_pos.y as u32));
+    } else {
+        focus.0 = None;
     }
 }
 

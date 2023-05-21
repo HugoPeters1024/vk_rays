@@ -16,6 +16,7 @@ use crate::vulkan_cleanup::{VkCleanup, VkCleanupEvent};
 #[derive(Clone, Copy, Pod, Zeroable)]
 pub struct RaytracerRegisters {
     pub uniform_buffer_address: u64,
+    pub query_buffer_address: u64,
 }
 
 #[derive(TypeUuid)]

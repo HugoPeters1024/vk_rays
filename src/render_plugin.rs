@@ -58,6 +58,9 @@ pub struct RenderConfig {
     pub skybox: Handle<bevy::prelude::Image>,
 }
 
+#[derive(Resource, Default, Deref, DerefMut)]
+pub struct RayFocalFocus(pub Option<(u32, u32)>);
+
 #[derive(Resource)]
 pub struct FrameResources {
     per_frame: Vec<RenderResources>,
@@ -84,6 +87,7 @@ impl FrameResources {
 
 pub struct RenderResources {
     pub uniform_buffer: Buffer<UniformData>,
+    pub query_buffer: Buffer<QueryData>,
     pub fence: vk::Fence,
     pub cmd_buffer: vk::CommandBuffer,
 }
@@ -91,6 +95,7 @@ pub struct RenderResources {
 fn cleanup_render_resources(render_resources: Res<FrameResources>, cleanup: Res<VkCleanup>) {
     for res in &render_resources.per_frame {
         cleanup.send(VkCleanupEvent::Buffer(res.uniform_buffer.handle));
+        cleanup.send(VkCleanupEvent::Buffer(res.query_buffer.handle));
         cleanup.send(VkCleanupEvent::Fence(res.fence));
     }
 }
@@ -101,6 +106,13 @@ pub struct UniformData {
     inverse_proj: Mat4,
     entropy: u32,
     should_clear: u32,
+    mouse_x: u32,
+    mouse_y: u32,
+}
+
+#[repr(C)]
+pub struct QueryData {
+    focal_distance: f32,
 }
 
 pub struct RenderPlugin;
@@ -117,6 +129,8 @@ impl Plugin for RenderPlugin {
             .single(&mut app.world);
         let render_device = RenderDevice::from_window(whandles);
         app.world.insert_resource(render_device.clone());
+
+        app.init_resource::<RayFocalFocus>();
 
         app.add_plugin(VkCleanupPlugin);
 
@@ -160,6 +174,21 @@ impl Plugin for RenderPlugin {
             let uniform_buffer =
                 render_device.create_host_buffer::<UniformData>(1, vk::BufferUsageFlags::UNIFORM_BUFFER);
 
+            let mut query_buffer_host =
+                render_device.create_host_buffer::<QueryData>(1, vk::BufferUsageFlags::TRANSFER_SRC);
+            {
+                let mut query_buffer_host = render_device.map_buffer(&mut query_buffer_host);
+                query_buffer_host[0] = QueryData { focal_distance: 7.0 };
+            }
+
+            let query_buffer = render_device.create_device_buffer::<QueryData>(1, vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::TRANSFER_DST);
+            unsafe {
+                render_device.run_single_commands(|cmd_buffer| {
+                    render_device.upload_buffer(cmd_buffer, &query_buffer_host, &query_buffer);
+                });
+            }
+            app.world.get_resource::<VkCleanup>().unwrap().send(VkCleanupEvent::Buffer(query_buffer_host.handle));
+
             let fence_info = vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::SIGNALED);
             let fence = unsafe { render_device.device.create_fence(&fence_info, None) }.unwrap();
 
@@ -172,6 +201,7 @@ impl Plugin for RenderPlugin {
 
             RenderResources {
                 uniform_buffer,
+                query_buffer,
                 fence,
                 cmd_buffer,
             }
@@ -192,7 +222,7 @@ fn wait_for_frame_finish(
     device: Res<RenderDevice>,
     cleanup: Res<VkCleanup>,
     mut swapchain: Query<&mut Swapchain>,
-    mut render_resources: ResMut<FrameResources>,
+    render_resources: ResMut<FrameResources>,
 ) {
     // get the next image to render to
     let mut swapchain = swapchain.single_mut();
@@ -226,6 +256,7 @@ fn render(
     sbt: Res<SBT>,
     primary_window: Query<&Window, With<PrimaryWindow>>,
     camera: Query<(Entity, &Camera3d)>,
+    focal_focus: Res<RayFocalFocus>,
 ) {
     let mut swapchain = swapchain.single_mut();
     let (camera_e, camera) = camera.single();
@@ -329,12 +360,16 @@ fn render(
                             inverse_proj: projection.inverse(),
                             entropy,
                             should_clear: camera.clear as u32,
+                            mouse_x: focal_focus.0.map_or(0, |f| f.0),
+                            mouse_y: focal_focus.0.map_or(0, |f| f.1),
                         };
                     }
 
                     let push_constants = RaytracerRegisters {
                         uniform_buffer_address: render_resources.get().uniform_buffer.address,
+                        query_buffer_address: render_resources.get().query_buffer.address,
                     };
+
                     device.device.cmd_push_constants(
                         cmd_buffer,
                         compiled.pipeline_layout,

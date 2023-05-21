@@ -151,7 +151,7 @@ impl Swapchain {
         let present_mode = present_modes
             .iter()
             .cloned()
-            .find(|&mode| mode == vk::PresentModeKHR::IMMEDIATE)
+            .find(|&mode| mode == vk::PresentModeKHR::MAILBOX)
             .unwrap_or(vk::PresentModeKHR::FIFO);
 
         let old_swapchain = self.handle;

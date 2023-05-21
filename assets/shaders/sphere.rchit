@@ -18,13 +18,12 @@ void main() {
     normal = -normal;
   }
 
-  const vec3 world_normal = normalize((gl_ObjectToWorldEXT * vec4(normal, 0.0)).xyz);
+  const vec3 world_normal = normal; //normalize((gl_ObjectToWorldEXT * vec4(normal, 0.0)).xyz);
 
 
 
   payload.absorption = 1.5f;
-  // light pink
-  payload.color = vec3(1.0f);
+  payload.color = vec4(1.0f);
   payload.t = gl_HitTEXT;
   payload.surface_normal = world_normal;
   payload.normal = world_normal;
