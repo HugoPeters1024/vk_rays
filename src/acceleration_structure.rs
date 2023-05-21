@@ -20,6 +20,8 @@ pub struct TriangleMaterial {
     pub metallic_factor: f32,
     pub roughness_factor: f32,
     pub metallic_roughness_texture: u32,
+    pub emmisive_factor: [f32; 3],
+    pub emmisive_texture: u32,
 }
 
 pub struct TriangleBLAS {

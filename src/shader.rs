@@ -52,6 +52,7 @@ impl AssetLoader for ShaderLoader {
             let mut options = shaderc::CompileOptions::new().unwrap();
             options.set_target_env(shaderc::TargetEnv::Vulkan, vk::make_api_version(0, 1, 3, 0));
             options.set_target_spirv(shaderc::SpirvVersion::V1_6);
+            options.set_optimization_level(shaderc::OptimizationLevel::Performance);
 
             options.set_include_callback(|fname, _type, _, _depth| {
                 let full_path = format!("./assets/shaders/{}", fname);

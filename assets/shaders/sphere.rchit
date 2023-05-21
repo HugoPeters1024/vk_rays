@@ -11,18 +11,26 @@ hitAttributeEXT vec3 spherePoint;
 
 void main() {
   const vec3 center = vec3(0);
-  const vec3 normal = normalize(spherePoint - center);
+  vec3 normal = normalize(spherePoint - center);
+
+  payload.inside = dot(normal, gl_ObjectRayDirectionEXT) > 0.0f;
+  if (payload.inside) {
+    normal = -normal;
+  }
+
   const vec3 world_normal = normalize((gl_ObjectToWorldEXT * vec4(normal, 0.0)).xyz);
 
 
-  payload.color = vec3(0.99);
+
+  payload.absorption = 1.5f;
+  // light pink
+  payload.color = vec3(1.0f);
   payload.t = gl_HitTEXT;
   payload.surface_normal = world_normal;
   payload.normal = world_normal;
   payload.emission = vec3(0.0);
   payload.metallic = 0.00f;
   payload.roughness = 0.00f;
-  payload.transmission = 1.00f;
   payload.refract_index = 1.33f;
 
   payload.transmission = 0.0f;

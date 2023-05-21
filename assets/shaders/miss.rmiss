@@ -13,7 +13,8 @@ void main()
       atan(gl_WorldRayDirectionEXT.x, gl_WorldRayDirectionEXT.z)/(2 * PI),
       acos(gl_WorldRayDirectionEXT.y) / PI
   );
-  payload.t = 0.0;
+  payload.t = -1.0;
   payload.emission = pow(min(texture(skybox, uv).rgb, vec3(1000)), vec3(2.2));
+  payload.emission = vec3(0.1f);
 }
 

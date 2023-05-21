@@ -29,15 +29,14 @@ vec3 toneMapUncharted2Impl(vec3 color)
 }
 
 void main() {
-    const float gamma = 2.2f;
-    const float exposure = 4.6;
+    const float gamma = 3.2f;
+    const float exposure = 180.6;
 
     vec4 bufferVal = texture(test, uv);
 
     vec3 hdrColor = bufferVal.xyz / bufferVal.w;
     vec3 corrected = pow(vec3(1.0f) - exp(-hdrColor * exposure), vec3(1.0f / gamma));
-    vec3 mapped = ACES(corrected);
 
-    oColor = vec4(mix(mapped, corrected, 0.4), 1.0f);
+    oColor = vec4(corrected, 1.0f);
 }
 

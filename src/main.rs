@@ -42,10 +42,11 @@ struct Cli {
     dump_schedule: bool,
 }
 
-#[derive(Resource)]
+#[derive(Resource, Default)]
 struct GameAssets {
     box_mesh: Handle<GltfMesh>,
     sponza: Handle<GltfMesh>,
+    bistro_interior: Handle<GltfMesh>,
 }
 
 #[derive(Component)]
@@ -101,7 +102,8 @@ fn startup(
         commands.spawn((
             Sphere,
             TransformBundle::from_transform(
-                Transform::from_translation(Vec3::new(-5.0 + i as f32, 0.5, 0.0)).with_scale(Vec3::splat(0.9)),
+                Transform::from_translation(Vec3::new(-5.0 + i as f32, 0.5, -1.25 + (i as f32) / 4.0))
+                    .with_scale(Vec3::splat(0.9)),
             ),
             RigidBody::Fixed,
             Collider::ball(0.5),
@@ -114,8 +116,8 @@ fn startup(
     });
 
     let game_assets = GameAssets {
-        box_mesh: assets.load("models/box.glb"),
-        sponza: assets.load("models/sponza.glb"),
+        bistro_interior: assets.load("models/bistro_interior.glb"),
+        ..default()
     };
 
     // floor
@@ -127,12 +129,11 @@ fn startup(
     //));
     //
     commands.spawn((
-        game_assets.sponza.clone(),
+        game_assets.bistro_interior.clone(),
         TransformBundle::from_transform(
             Transform::from_scale(Vec3::splat(0.01)).with_rotation(Quat::from_rotation_x(0.0)),
         ),
     ));
-    
 
     commands.insert_resource(game_assets);
 
@@ -159,7 +160,7 @@ fn report_fps(time: Res<Time>, input: Res<Input<KeyCode>>, mut ravg: Local<f32>)
     if *ravg == f32::INFINITY {
         *ravg = 1.0 / time.delta_seconds();
     }
-    *ravg = *ravg * 0.98 + 0.02 * (1.0 / time.delta_seconds());
+    *ravg = *ravg * 0.95 + 0.05 * (1.0 / time.delta_seconds());
 }
 
 fn move_sphere(input: Res<Input<KeyCode>>, time: Res<Time>, mut spheres: Query<&mut Transform, With<Sphere>>) {

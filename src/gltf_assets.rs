@@ -382,11 +382,18 @@ impl VulkanAsset for GltfMesh {
                 metallic_factor: primitive.material().pbr_metallic_roughness().metallic_factor(),
                 roughness_factor: primitive.material().pbr_metallic_roughness().roughness_factor(),
                 metallic_roughness_texture: 0xFFFFFFFF,
+                emmisive_factor: primitive.material().emissive_factor(),
+                emmisive_texture: 0xFFFFFFFF,
             };
 
             if let Some(diffuse_texture) = primitive.material().pbr_metallic_roughness().base_color_texture() {
                 geometry_to_material_host_view[geometry_id].diffuse_texture =
                     load_cached_texture(diffuse_texture.texture().source().index());
+            }
+
+            if let Some(emmisive_texture) = primitive.material().emissive_texture() {
+                geometry_to_material_host_view[geometry_id].emmisive_texture =
+                    load_cached_texture(emmisive_texture.texture().source().index());
             }
 
             if let Some(normal_texture) = primitive.material().normal_texture() {

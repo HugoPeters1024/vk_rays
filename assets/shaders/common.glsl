@@ -40,10 +40,12 @@ vec3 alignToNormalZUP(in vec3 s, in vec3 normal)
 
 struct HitPayload {
   float t;
+  bool inside;
   vec3 color;
   vec3 surface_normal;
   vec3 normal;
   vec3 emission;
+  float absorption;
   float metallic;
   float roughness;
   float transmission;
@@ -82,6 +84,8 @@ struct GltfMaterial {
   float metallic_factor;
   float roughness_factor;
   uint metallic_roughness_texture;
+  vec3 emissive_factor;
+  uint emissive_texture;
 };
 
 
