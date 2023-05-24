@@ -74,7 +74,7 @@ void main()
     payload.color *= vec4(pow(diffuse_color.rgb, vec3(2.2)), diffuse_color.a);
   }
 
-  payload.emission = material.emissive_factor * 100;
+  payload.emission = material.emissive_factor * 10;
   if (material.emissive_texture != 0xFFFFFFFF) {
     payload.emission *= pow(textureLod(textures[material.emissive_texture], uv, 0).xyz, vec3(2.2));
   }

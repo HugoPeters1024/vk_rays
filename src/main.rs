@@ -240,11 +240,13 @@ fn camera_clear(input: Res<Input<KeyCode>>, mut q: Query<&mut Camera3d>) {
 fn mouse_click(input: Res<Input<MouseButton>>, window: Query<&Window, With<PrimaryWindow>>, mut focus: ResMut<RayFocalFocus>) {
     if input.pressed(MouseButton::Left) {
         let window = window.single();
-        let mouse_pos = window.cursor_position().unwrap();
-        focus.0 = Some((mouse_pos.x as u32, mouse_pos.y as u32));
-    } else {
-        focus.0 = None;
+        if let Some(mouse_pos) = window.physical_cursor_position() {
+            focus.0 = Some((mouse_pos.x as u32, mouse_pos.y as u32));
+            return;
+        }
     }
+
+    focus.0 = None;
 }
 
 fn spawn(mut commands: Commands, game_assets: Res<GameAssets>, q: Query<&MainBlock>) {

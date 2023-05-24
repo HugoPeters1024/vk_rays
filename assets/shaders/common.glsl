@@ -119,7 +119,7 @@ layout (buffer_reference, scalar, buffer_reference_align = 8) readonly buffer Un
   uint mouse_y;
 };
 
-layout (buffer_reference, scalar, buffer_reference_align = 8) buffer QueryData {
+layout (buffer_reference, std430, buffer_reference_align = 16) buffer QueryData {
   float focal_distance;
 };
 

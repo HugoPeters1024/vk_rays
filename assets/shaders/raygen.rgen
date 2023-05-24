@@ -32,26 +32,36 @@ void main() {
   const vec2 inUV = pixel_center / vec2(gl_LaunchSizeEXT.xy);
   vec2 d = inUV * 2.0 - 1.0;
 
-  const float focalDistance = queries.focal_distance;
-  const float aperature = 0.005f;
+  float focalDistance = queries.focal_distance;
+
+  const float aperature = 0.02f;
   const float offsetR = sqrt(randf());
   const float offsetA = randf() * 2.0f * PI;
   const vec2 focalOffset = aperature * vec2(offsetR * sin(offsetA), offsetR * cos(offsetA));
 
-  const vec3 viewDirHorz = normalize(uniforms.inverse_view * vec4(1,0,0,0)).xyz;
-  const vec3 viewDirVert = normalize(uniforms.inverse_view * vec4(0,1,0,0)).xyz;
+  const float tmin = 0.0001;
+  const float tmax = 100.0;
 
   vec3 start_origin = (uniforms.inverse_view * vec4(0,0,0,1)).xyz;
-  vec3 target = (uniforms.inverse_proj * vec4(d.x, d.y, 1, 1.0)).xyz;
+  vec3 target = (uniforms.inverse_proj * vec4(d, 1, 1)).xyz;
   vec3 start_direction = (uniforms.inverse_view * vec4(normalize(target), 0)).xyz;
 
-  const vec3 focalPoint = start_origin + focalDistance * start_direction;
-  start_origin += focalOffset.x * viewDirHorz + focalOffset.y * viewDirVert;
-  start_direction = normalize(focalPoint - start_origin);
+  if (uniforms.mouse_x != 0 && 
+      uniforms.mouse_y != 0 && 
+      uniforms.mouse_x == gl_LaunchIDEXT.x &&
+      uniforms.mouse_y == gl_LaunchIDEXT.y)
+  {
+    traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xFF, 0, 0, 0, start_origin, tmin, start_direction, tmax, 0);
+    if (payload.t != 0.0) {
+      queries.focal_distance = payload.t;
+    }
+  }
+
+  vec3 focal_point = start_origin + focalDistance * start_direction;
+  start_origin = (uniforms.inverse_view * vec4(focalOffset,0,1)).xyz;
+  start_direction = normalize(focal_point - start_origin);
 
 
-  const float tmin = 0.0001;
-  const float tmax = 10000.0;
 
   vec3 accum = vec3(0.0);
   uint MAX_SAMPLES = 1;
@@ -72,9 +82,7 @@ void main() {
         break;
       }
 
-      if (s == 0 && bounce == 0 && uniforms.mouse_x != 0 && uniforms.mouse_y != 0 && uniforms.mouse_x == gl_LaunchIDEXT.x && uniforms.mouse_y == gl_LaunchIDEXT.y) {
-        queries.focal_distance = payload.t;
-      }
+
 
       origin = origin + payload.t * direction;
       if (randf() < 1-payload.color.a) {
@@ -87,11 +95,6 @@ void main() {
         break;
       }
       mask /= pRussian;
-      mask *= payload.color.rgb;
-
-
-      vec3 sample_dir = alignToNormalZUP(CosineSampleHemisphere(randf(), randf()), payload.normal);
-
 
       if (randf() < payload.transmission) {
         // calculate the eta based on whether we are inside
@@ -124,6 +127,7 @@ void main() {
             refract_dir = normalize(eta * direction + payload.normal * (eta * costi - sqrt(k)));
         }
 
+        vec3 sample_dir = alignToNormalZUP(CosineSampleHemisphere(randf(), randf()), payload.normal);
         direction = mix(refract_dir, sample_dir, payload.roughness);
         if (payload.inside) {
           mask *= exp(-payload.t * payload.absorption);
