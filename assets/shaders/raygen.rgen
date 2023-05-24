@@ -26,18 +26,37 @@ uint getSeed() {
     return initRandom(gl_LaunchIDEXT.xy, gl_LaunchIDEXT.xy, entropy);
 }
 
+bool isInsideHexagon(vec2 pos)
+{
+    const float q2x = abs(pos.x);         // transform the test point locally and to quadrant 2
+    const float q2y = abs(pos.y);         // transform the test point locally and to quadrant 2
+    if (q2x > 0.5 || q2y > 1) return false;           // bounding test (since q2 is in quadrant 2 only 2 tests are needed)
+    return 1 - q2x - q2y >= 0;   // finally the dot product can be reduced to this due to the hexagon symmetry
+}
+
+vec2 sampleHexagon() {
+  while(true) {
+    float x = randf() * 2.0 - 1.0;
+    float y = randf() * 2.0 - 1.0;
+    if (isInsideHexagon(vec2(x,y))) {
+      return vec2(x,y);
+    }
+  }
+}
+
 void main() {
   g_seed = getSeed();
+  const float aspect_ratio = float(gl_LaunchSizeEXT.x) / float(gl_LaunchSizeEXT.y);
   const vec2 pixel_center = vec2(gl_LaunchIDEXT.xy) + vec2(randf(), randf());
   const vec2 inUV = pixel_center / vec2(gl_LaunchSizeEXT.xy);
   vec2 d = inUV * 2.0 - 1.0;
 
   float focalDistance = queries.focal_distance;
 
-  const float aperature = 0.02f;
+  const float aperture = 0.005f;
   const float offsetR = sqrt(randf());
   const float offsetA = randf() * 2.0f * PI;
-  const vec2 focalOffset = aperature * vec2(offsetR * sin(offsetA), offsetR * cos(offsetA));
+  const vec2 focalOffset = aperture * sampleHexagon() * vec2(aspect_ratio, 1.0);
 
   const float tmin = 0.0001;
   const float tmax = 100.0;
@@ -81,8 +100,6 @@ void main() {
       if (payload.t == 0.0) {
         break;
       }
-
-
 
       origin = origin + payload.t * direction;
       if (randf() < 1-payload.color.a) {

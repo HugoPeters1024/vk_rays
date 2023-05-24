@@ -11,8 +11,9 @@ use crate::{
     render_device::RenderDevice,
     render_image::VkImage,
     texture::{load_texture_from_bytes, padd_pixel_bytes_rgba_unorm},
+    vk_utils,
     vulkan_assets::VulkanAsset,
-    vulkan_cleanup::{VkCleanup, VkCleanupEvent}, vk_utils,
+    vulkan_cleanup::{VkCleanup, VkCleanupEvent},
 };
 
 #[derive(TypeUuid, Default, Clone)]
@@ -223,8 +224,10 @@ impl VulkanAsset for GltfMesh {
             allocate_acceleration_structure(&device, vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL, &geometry_sizes);
 
         let scratch_alignment = as_propeties.min_acceleration_structure_scratch_offset_alignment as u64;
-        let scratch_buffer: Buffer<u8> =
-            device.create_device_buffer(geometry_sizes.build_scratch_size + scratch_alignment, vk::BufferUsageFlags::STORAGE_BUFFER);
+        let scratch_buffer: Buffer<u8> = device.create_device_buffer(
+            geometry_sizes.build_scratch_size + scratch_alignment,
+            vk::BufferUsageFlags::STORAGE_BUFFER,
+        );
 
         let build_geometry_info = vk::AccelerationStructureBuildGeometryInfoKHR::builder()
             .ty(vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL)

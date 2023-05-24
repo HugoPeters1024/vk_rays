@@ -2,7 +2,8 @@ use ash::vk;
 
 use crate::{
     render_buffer::{Buffer, BufferProvider},
-    render_device::RenderDevice, render_image::VkImage,
+    render_device::RenderDevice,
+    render_image::VkImage,
 };
 
 #[repr(C)]
@@ -14,7 +15,7 @@ pub struct Vertex {
 
 #[repr(C)]
 pub struct TriangleMaterial {
-    pub diffuse_factor: [f32;4],
+    pub diffuse_factor: [f32; 4],
     pub diffuse_texture: u32,
     pub normal_texture: u32,
     pub metallic_factor: f32,

@@ -1,4 +1,4 @@
-use crate::camera::Camera3d;
+use crate::camera::{Camera3d, Camera3dPlugin};
 use crate::rasterization_pipeline::{RasterizationPipeline, RasterizationPipelinePlugin};
 use crate::raytracing_pipeline::{RaytracerRegisters, RaytracingPipeline, RaytracingPlugin};
 use crate::render_buffer::{Buffer, BufferProvider};
@@ -147,6 +147,7 @@ impl Plugin for RenderPlugin {
         app.add_plugin(RaytracingPlugin);
         app.add_plugin(RasterizationPipelinePlugin);
         app.add_plugin(SBTPlugin);
+        app.add_plugin(Camera3dPlugin);
 
         app.add_system(run_render_schedule);
         app.add_system(shutdown.in_base_set(CoreSet::Last));
@@ -181,13 +182,19 @@ impl Plugin for RenderPlugin {
                 query_buffer_host[0] = QueryData { focal_distance: 7.0 };
             }
 
-            let query_buffer = render_device.create_device_buffer::<QueryData>(1, vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::TRANSFER_DST);
+            let query_buffer = render_device.create_device_buffer::<QueryData>(
+                1,
+                vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
+            );
             unsafe {
                 render_device.run_single_commands(|cmd_buffer| {
                     render_device.upload_buffer(cmd_buffer, &query_buffer_host, &query_buffer);
                 });
             }
-            app.world.get_resource::<VkCleanup>().unwrap().send(VkCleanupEvent::Buffer(query_buffer_host.handle));
+            app.world
+                .get_resource::<VkCleanup>()
+                .unwrap()
+                .send(VkCleanupEvent::Buffer(query_buffer_host.handle));
 
             let fence_info = vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::SIGNALED);
             let fence = unsafe { render_device.device.create_fence(&fence_info, None) }.unwrap();
@@ -248,7 +255,7 @@ fn render(
     scene: Res<Scene>,
     mut swapchain: Query<&mut Swapchain>,
     textures: Res<VulkanAssets<bevy::prelude::Image>>,
-    gtransforms: Query<&GlobalTransform>,
+    gtransforms: Query<Ref<GlobalTransform>>,
     render_config: Res<RenderConfig>,
     mut render_resources: ResMut<FrameResources>,
     rt_pipelines: Res<VulkanAssets<RaytracingPipeline>>,
@@ -345,8 +352,8 @@ fn render(
                     {
                         let mut uniform_view = device.map_buffer(&mut render_resources.get_mut().uniform_buffer);
                         let mut rng = rand::thread_rng();
-                        let (_, rotation, translation) =
-                            gtransforms.get(camera_e).unwrap().to_scale_rotation_translation();
+                        let camera_transform = gtransforms.get(camera_e).unwrap();
+                        let (_, rotation, translation) = camera_transform.to_scale_rotation_translation();
                         let camera_view = Mat4::from_quat(rotation) * Mat4::from_translation(translation);
                         let projection = Mat4::perspective_rh(
                             camera.fov,
@@ -359,7 +366,7 @@ fn render(
                             inverse_view: camera_view.inverse(),
                             inverse_proj: projection.inverse(),
                             entropy,
-                            should_clear: camera.clear as u32,
+                            should_clear: (focal_focus.0.is_some() || camera.moved) as u32,
                             mouse_x: focal_focus.0.map_or(0, |f| f.0),
                             mouse_y: focal_focus.0.map_or(0, |f| f.1),
                         };

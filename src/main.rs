@@ -27,11 +27,11 @@ use bevy::prelude::*;
 use bevy::time::common_conditions::on_timer;
 use bevy::window::PrimaryWindow;
 use bevy_rapier3d::prelude::*;
-use camera::{Camera3d, Camera3dBundle};
+use camera::{Camera3d, Camera3dBundle, PitchYaw};
 use clap::Parser;
 use gltf_assets::GltfMesh;
 use rasterization_pipeline::RasterizationPipeline;
-use render_plugin::{RenderConfig, RayFocalFocus};
+use render_plugin::{RayFocalFocus, RenderConfig};
 use sphere_blas::Sphere;
 
 use crate::raytracing_pipeline::RaytracingPipeline;
@@ -49,6 +49,7 @@ struct GameAssets {
     sponza: Handle<GltfMesh>,
     bistro_interior: Handle<GltfMesh>,
     bistro_exterior: Handle<GltfMesh>,
+    fireplace_room: Handle<GltfMesh>,
 }
 
 #[derive(Component)]
@@ -83,7 +84,6 @@ fn main() {
             ..default()
         })
         .add_startup_system(startup)
-        .add_system(camera_clear)
         .add_system(mouse_click)
         .add_system(move_sphere)
         .add_system(report_fps)
@@ -119,7 +119,7 @@ fn startup(
     });
 
     let game_assets = GameAssets {
-        bistro_exterior: assets.load("models/bistro_exterior.glb"),
+        fireplace_room: assets.load("models/fireplace.glb"),
         ..default()
     };
 
@@ -131,10 +131,17 @@ fn startup(
     //    Collider::cuboid(0.5, 0.5, 0.5),
     //));
     //
+    //commands.spawn((
+    //    game_assets.bistro_interior.clone(),
+    //    TransformBundle::from_transform(
+    //        Transform::from_scale(Vec3::splat(0.01)).with_rotation(Quat::from_rotation_x(0.0)),
+    //    ),
+    //));
+    //
     commands.spawn((
-        game_assets.bistro_exterior.clone(),
+        game_assets.fireplace_room.clone(),
         TransformBundle::from_transform(
-            Transform::from_scale(Vec3::splat(0.01)).with_rotation(Quat::from_rotation_x(0.0)),
+            Transform::from_scale(Vec3::splat(1.0)).with_rotation(Quat::from_rotation_x(PI/2.0)),
         ),
     ));
 
@@ -179,12 +186,16 @@ fn move_sphere(input: Res<Input<KeyCode>>, time: Res<Time>, mut spheres: Query<&
     }
 }
 
-fn player_controls(input: Res<Input<KeyCode>>, time: Res<Time>, mut camera: Query<&mut Transform, With<Camera3d>>) {
-    let mut camera = camera.single_mut();
+fn player_controls(
+    input: Res<Input<KeyCode>>,
+    time: Res<Time>,
+    mut camera: Query<(&mut Transform, &mut PitchYaw), With<Camera3d>>,
+) {
+    let (mut camera, mut pitch_yaw) = camera.single_mut();
     let f = time.delta_seconds();
 
     // construct a vec3 that indicates the direction the player is looking
-    let look_dir = camera.rotation.inverse() * Vec3::new(0.0, 0.0, 1.0);
+    let look_dir = (camera.rotation.inverse() * Vec3::new(0.0, 0.0, 1.0)).normalize();
 
     let speed = if input.pressed(KeyCode::LShift) { 4.0 } else { 1.0 };
     let sideways = Vec3::normalize(Vec3::cross(look_dir, Vec3::Y));
@@ -214,30 +225,29 @@ fn player_controls(input: Res<Input<KeyCode>>, time: Res<Time>, mut camera: Quer
     }
 
     if input.pressed(KeyCode::Left) {
-        camera.rotation *= Quat::from_rotation_y(-f);
+        pitch_yaw.yaw -= f;
     }
 
     if input.pressed(KeyCode::Right) {
-        camera.rotation *= Quat::from_rotation_y(f);
+        pitch_yaw.yaw += f;
     }
 
     if input.pressed(KeyCode::Up) {
-        camera.rotation *= Quat::from_axis_angle(sideways, f);
+        pitch_yaw.pitch += f;
     }
 
     if input.pressed(KeyCode::Down) {
-        camera.rotation *= Quat::from_axis_angle(sideways, -f);
+        pitch_yaw.pitch -= f;
     }
+
+    camera.rotation = Quat::from_axis_angle(-Vec3::X, pitch_yaw.pitch) * Quat::from_axis_angle(Vec3::Y, pitch_yaw.yaw);
 }
 
-fn camera_clear(input: Res<Input<KeyCode>>, mut q: Query<&mut Camera3d>) {
-    let mut camera = q.single_mut();
-    if input.just_pressed(KeyCode::Space) {
-        camera.clear = !camera.clear;
-    }
-}
-
-fn mouse_click(input: Res<Input<MouseButton>>, window: Query<&Window, With<PrimaryWindow>>, mut focus: ResMut<RayFocalFocus>) {
+fn mouse_click(
+    input: Res<Input<MouseButton>>,
+    window: Query<&Window, With<PrimaryWindow>>,
+    mut focus: ResMut<RayFocalFocus>,
+) {
     if input.pressed(MouseButton::Left) {
         let window = window.single();
         if let Some(mouse_pos) = window.physical_cursor_position() {

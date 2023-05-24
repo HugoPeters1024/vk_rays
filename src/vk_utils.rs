@@ -33,7 +33,9 @@ pub fn get_raytracing_properties(device: &RenderDevice) -> vk::PhysicalDeviceRay
     raytracing_properties
 }
 
-pub fn get_acceleration_structure_properties(device: &RenderDevice) -> vk::PhysicalDeviceAccelerationStructurePropertiesKHR {
+pub fn get_acceleration_structure_properties(
+    device: &RenderDevice,
+) -> vk::PhysicalDeviceAccelerationStructurePropertiesKHR {
     let mut acceleration_structure_properties = vk::PhysicalDeviceAccelerationStructurePropertiesKHR::default();
     let mut properties2 = vk::PhysicalDeviceProperties2KHR::builder()
         .push_next(&mut acceleration_structure_properties)

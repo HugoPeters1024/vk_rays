@@ -1,5 +1,5 @@
 use ash::vk;
-use bevy::{prelude::*, utils::HashMap, asset::HandleId};
+use bevy::{asset::HandleId, prelude::*, utils::HashMap};
 
 use crate::{
     gltf_assets::GltfMesh,
@@ -8,7 +8,7 @@ use crate::{
     render_device::RenderDevice,
     render_plugin::{RenderSchedule, RenderSet},
     vk_utils,
-    vulkan_assets::{VulkanAssets, VkAssetCleanupPlaybook},
+    vulkan_assets::{VkAssetCleanupPlaybook, VulkanAssets},
     vulkan_cleanup::{VkCleanup, VkCleanupEvent},
 };
 
@@ -55,7 +55,7 @@ pub struct SBT {
     pub miss_region: vk::StridedDeviceAddressRegionKHR,
     pub hit_region: vk::StridedDeviceAddressRegionKHR,
     pub data: Buffer<u8>,
-    pub triangle_offsets: HashMap<HandleId, u32>
+    pub triangle_offsets: HashMap<HandleId, u32>,
 }
 
 pub struct SBTPlugin;
@@ -114,7 +114,8 @@ fn update_sbt(
             geometry_to_index_offset_buffer: mesh.geometry_to_index_offset.address,
             goemetry_to_texture_buffer: mesh.geometry_to_material.address,
         }));
-        me.triangle_offsets.insert(handle.clone(), hit_region_data.len() as u32 - 1);
+        me.triangle_offsets
+            .insert(handle.clone(), hit_region_data.len() as u32 - 1);
     }
 
     let handle_size_aligned = vk_utils::aligned_size(

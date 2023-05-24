@@ -192,7 +192,8 @@ fn update_scene(
         .dst_acceleration_structure(scene.tlas.handle)
         .geometries(std::slice::from_ref(&geometry))
         .scratch_data(vk::DeviceOrHostAddressKHR {
-            device_address: scene.scratch_buffer.address + scratch_alignment - scene.scratch_buffer.address % scratch_alignment,
+            device_address: scene.scratch_buffer.address + scratch_alignment
+                - scene.scratch_buffer.address % scratch_alignment,
         });
 
     let build_range = vk::AccelerationStructureBuildRangeInfoKHR::builder()

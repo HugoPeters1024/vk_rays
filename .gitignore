@@ -1,6 +1,3 @@
 /target
 /assets/textures/sky.exr
-/assets/models/rungholt.glb
-/assets/models/sponza.glb
-/assets/models/bistro_interior.glb
-/assets/models/bistro_exterior.glb
+/assets/models/*.glb

@@ -58,7 +58,7 @@ impl<T: VulkanAsset> VulkanAssets<T> {
             None
         }
     }
-    
+
     pub fn items(&self) -> impl Iterator<Item = (&HandleId, &T::PreparedAsset)> {
         self.lookup.iter()
     }

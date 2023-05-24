@@ -74,12 +74,18 @@ void main()
     payload.color *= vec4(pow(diffuse_color.rgb, vec3(2.2)), diffuse_color.a);
   }
 
-  payload.emission = material.emissive_factor * 10;
+  payload.metallic = material.metallic_factor;
+  payload.roughness = material.roughness_factor;
+  if (material.metallic_roughness_texture != 0xFFFFFFFF) {
+    vec2 roughness_and_metallic = textureLod(textures[material.metallic_roughness_texture], uv, 0).gb;
+    payload.roughness *= roughness_and_metallic.x;
+    payload.metallic *= roughness_and_metallic.y;
+  }
+
+  payload.emission = material.emissive_factor;
   if (material.emissive_texture != 0xFFFFFFFF) {
     payload.emission *= pow(textureLod(textures[material.emissive_texture], uv, 0).xyz, vec3(2.2));
   }
-
-
 
   if (material.normal_texture != 0xFFFFFFFF) {
     const vec3 tangent = calc_tangent(v0, v1, v2);
@@ -98,19 +104,6 @@ void main()
 
   payload.transmission = 0.0f;
   payload.absorption = 0;
-  payload.roughness = 0.1f;
   payload.refract_index = 1.05;
-
-  if (gl_GeometryIndexEXT == 9) {
-//    payload.emission = vec3(1.0, 0.8, 0.2) * 10;
-  }
-
-  payload.metallic = material.metallic_factor;
-  payload.roughness = material.roughness_factor;
-  if (material.metallic_roughness_texture != 0xFFFFFFFF) {
-    vec2 roughness_and_metallic = textureLod(textures[material.metallic_roughness_texture], uv, 0).gb;
-    payload.roughness *= roughness_and_metallic.x;
-    payload.metallic *= roughness_and_metallic.y;
-  }
 }
 
