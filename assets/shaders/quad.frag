@@ -1,8 +1,14 @@
 #version 460
 
+#include "common.glsl"
+
 layout(location = 0) in  vec2 uv;
 
 layout (set=0, binding=0) uniform sampler2D test;
+
+layout(push_constant, std430) uniform Registers {
+  UniformData uniforms;
+};
 
 layout(location = 0) out vec4 oColor;
 
@@ -44,7 +50,7 @@ vec3 tonemapFilmic(const vec3 color) {
 
 void main() {
     const float gamma = 2.2f;
-    const float exposure = 1.0;
+    const float exposure = uniforms.exposure * uniforms.exposure;
 
     vec4 bufferVal = texture(test, uv);
 

@@ -23,6 +23,7 @@ use std::f32::consts::PI;
 use std::time::Duration;
 
 use bevy::asset::HandleId;
+use bevy::input::mouse::MouseWheel;
 use bevy::prelude::*;
 use bevy::time::common_conditions::on_timer;
 use bevy::window::PrimaryWindow;
@@ -50,6 +51,7 @@ struct GameAssets {
     bistro_interior: Handle<GltfMesh>,
     bistro_exterior: Handle<GltfMesh>,
     fireplace_room: Handle<GltfMesh>,
+    rungholt: Handle<GltfMesh>,
 }
 
 #[derive(Component)]
@@ -119,7 +121,7 @@ fn startup(
     });
 
     let game_assets = GameAssets {
-        fireplace_room: assets.load("models/fireplace.glb"),
+        rungholt: assets.load("models/rungholt.glb"),
         ..default()
     };
 
@@ -139,9 +141,9 @@ fn startup(
     //));
     //
     commands.spawn((
-        game_assets.fireplace_room.clone(),
+        game_assets.rungholt.clone(),
         TransformBundle::from_transform(
-            Transform::from_scale(Vec3::splat(1.0)).with_rotation(Quat::from_rotation_x(PI/2.0)),
+            Transform::from_scale(Vec3::splat(0.1)).with_rotation(Quat::from_rotation_x(PI/2.0)),
         ),
     ));
 
@@ -245,9 +247,17 @@ fn player_controls(
 
 fn mouse_click(
     input: Res<Input<MouseButton>>,
+    mut scroll_events: EventReader<MouseWheel>,
     window: Query<&Window, With<PrimaryWindow>>,
     mut focus: ResMut<RayFocalFocus>,
+    mut camera: Query<&mut Camera3d>,
 ) {
+    if let Ok(mut camera) = camera.get_single_mut() {
+        for scroll in scroll_events.iter() {
+            camera.exposure += scroll.x * 0.1;
+            camera.fov -= scroll.y * 0.1;
+        }
+    }
     if input.pressed(MouseButton::Left) {
         let window = window.single();
         if let Some(mouse_pos) = window.physical_cursor_position() {

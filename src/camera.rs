@@ -2,12 +2,21 @@ use std::f32::consts::PI;
 
 use bevy::prelude::*;
 
-#[derive(Component)]
+#[derive(Component, Debug, Clone)]
 pub struct Camera3d {
     pub fov: f32,
     pub min_t: f32,
     pub max_t: f32,
     pub moved: bool,
+    pub exposure: f32,
+}
+
+impl PartialEq for Camera3d {
+    fn eq(&self, other: &Self) -> bool {
+        self.fov == other.fov
+            && self.min_t == other.min_t
+            && self.max_t == other.max_t
+    }
 }
 
 #[derive(Default, Component)]
@@ -23,6 +32,7 @@ impl Default for Camera3d {
             min_t: 0.0001,
             max_t: 100.0,
             moved: false,
+            exposure: 1.0,
         }
     }
 }
@@ -45,18 +55,19 @@ impl Plugin for Camera3dPlugin {
 
 fn check_moved(
     mut query: Query<(&GlobalTransform, &mut Camera3d)>,
-    mut last: Local<Option<GlobalTransform>>,
+    mut last: Local<Option<(GlobalTransform, Camera3d)>>,
 ) {
-    if let Some(last) = last.as_mut() {
+    if let Some((last_transform, last_camera)) = last.as_mut() {
         for (transform, mut camera) in query.iter_mut() {
-            if transform != last {
+            if transform != last_transform || *camera != *last_camera {
                 camera.moved = true;
-                *last = *transform;
+                *last_transform = *transform;
+                *last_camera = camera.clone();
             } else {
                 camera.moved = false;
             }
         }
     } else {
-        *last = Some(*query.single().0);
+        *last = Some((*query.single().0, query.single().1.clone()));
     }
 }

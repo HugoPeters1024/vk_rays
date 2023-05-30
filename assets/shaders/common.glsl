@@ -117,6 +117,7 @@ layout (buffer_reference, scalar, buffer_reference_align = 8) readonly buffer Un
   uint should_clear;
   uint mouse_x;
   uint mouse_y;
+  float exposure;
 };
 
 layout (buffer_reference, std430, buffer_reference_align = 16) buffer QueryData {

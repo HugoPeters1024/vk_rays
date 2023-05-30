@@ -1,5 +1,5 @@
 use crate::camera::{Camera3d, Camera3dPlugin};
-use crate::rasterization_pipeline::{RasterizationPipeline, RasterizationPipelinePlugin};
+use crate::rasterization_pipeline::{RasterizationPipeline, RasterizationPipelinePlugin, RasterizationRegisters};
 use crate::raytracing_pipeline::{RaytracerRegisters, RaytracingPipeline, RaytracingPlugin};
 use crate::render_buffer::{Buffer, BufferProvider};
 use crate::scene::{Scene, ScenePlugin};
@@ -108,6 +108,7 @@ pub struct UniformData {
     should_clear: u32,
     mouse_x: u32,
     mouse_y: u32,
+    exposure: f32,
 }
 
 #[repr(C)]
@@ -369,6 +370,7 @@ fn render(
                             should_clear: (focal_focus.0.is_some() || camera.moved) as u32,
                             mouse_x: focal_focus.0.map_or(0, |f| f.0),
                             mouse_y: focal_focus.0.map_or(0, |f| f.1),
+                            exposure: camera.exposure,
                         };
                     }
 
@@ -491,6 +493,18 @@ fn render(
                     0,
                     std::slice::from_ref(&rast_descriptor_set),
                     &[],
+                );
+
+                let push_constants = RasterizationRegisters {
+                    uniforms: render_resources.get().uniform_buffer.address,
+                };
+
+                device.device.cmd_push_constants(
+                    cmd_buffer,
+                    compiled.pipeline_layout,
+                    vk::ShaderStageFlags::FRAGMENT,
+                    0,
+                    bytemuck::bytes_of(&push_constants),
                 );
 
                 device.device.cmd_draw(cmd_buffer, 3, 1, 0, 0);

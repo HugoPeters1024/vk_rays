@@ -102,7 +102,7 @@ void main() {
       }
 
       origin = origin + payload.t * direction;
-      if (randf() < 1-payload.color.a) {
+      if (randf() < 1-payload.color.a || max3(payload.color.rgb) == 0.0) {
         continue;
       }
 

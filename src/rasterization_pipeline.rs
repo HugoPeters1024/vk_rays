@@ -2,6 +2,7 @@ use ash::vk;
 use bevy::ecs::system::lifetimeless::SRes;
 use bevy::prelude::*;
 use bevy::reflect::TypeUuid;
+use bytemuck::{Pod, Zeroable};
 
 use crate::composed_asset::{ComposedAsset, ComposedAssetAppExtension};
 use crate::render_device::RenderDevice;
@@ -14,6 +15,12 @@ use crate::vulkan_cleanup::{VkCleanup, VkCleanupEvent};
 pub struct RasterizationPipeline {
     pub vs_shader: Handle<Shader>,
     pub fs_shader: Handle<Shader>,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+pub struct RasterizationRegisters {
+    pub uniforms: u64,
 }
 
 impl ComposedAsset for RasterizationPipeline {
@@ -106,7 +113,14 @@ fn create_rast_pipeline(device: &RenderDevice, vs: &Shader, fs: &Shader) -> VkRa
 
     let (descriptor_set_layout, descriptor_sets) = create_rast_descriptor_data(device);
 
-    let layout_info = vk::PipelineLayoutCreateInfo::builder().set_layouts(std::slice::from_ref(&descriptor_set_layout));
+    let push_constant_info = vk::PushConstantRange::builder()
+        .stage_flags(vk::ShaderStageFlags::FRAGMENT)
+        .offset(0)
+        .size(std::mem::size_of::<RasterizationRegisters>() as u32)
+        .build();
+    let layout_info = vk::PipelineLayoutCreateInfo::builder()
+        .set_layouts(std::slice::from_ref(&descriptor_set_layout))
+        .push_constant_ranges(std::slice::from_ref(&push_constant_info));
     let pipeline_layout = unsafe { device.device.create_pipeline_layout(&layout_info, None) }.unwrap();
 
     let pipeline_info = vk::GraphicsPipelineCreateInfo::builder()
